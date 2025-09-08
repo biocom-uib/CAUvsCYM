@@ -1,0 +1,1 @@
+Data and scripts needed to reproduce the statistical analyses conducted for the manuscript "Shifts in microbial communities driven by the succession of seagrasses to benthic macroalgae may exacerbate heatwave effects in eutrophicated-coastal lagoons" by E. Rubio-Portillo et al
