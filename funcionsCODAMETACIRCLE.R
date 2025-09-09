@@ -800,3 +800,10 @@ aldexCesc.clr <- function( reads, conds, mc.samples=128, denom="all", verbose=FA
   return(new("aldex.clr",reads=reads,conds=conds,mc.samples=mc.samples,verbose=verbose,useMC=useMC,analysisData=l2p))
 }
 
+Indicador=function(x,k=n.OTUs.original){
+  xx=rep(0,k)
+  y=as.numeric(gsub("\\D+", "", OTUs[x]))
+  xx[y]=1
+  
+  return(xx)
+}
