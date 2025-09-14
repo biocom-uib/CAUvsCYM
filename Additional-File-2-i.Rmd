@@ -1,0 +1,5094 @@
+---
+title: "Shifts in microbial communities driven by the succession of seagrasses to benthic macroalgae may exacerbate heatwave effects in eutrophicated-coastal lagoons: Statistical analysis"
+author: "E. Rubio-Portillo, F. Rosselló, B. Aldeguer-Riquelme, *et al*"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+  bookdown::html_document2:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    toc_title: "Contents"
+    embed-resources: true   
+date: "`r format(Sys.Date())`"
+embed-resources: true
+---
+
+This document contains all statistical analyses conducted for the manuscript.  
+All data to reproduce analysis can be found here:  https://github.com/biocom-uib/CAUvsCYM 
+
+## Setup
+
+```{r setup}
+rm(list = ls())
+knitr::opts_chunk$set(
+   fig.width=10, 
+  out.width="50%",
+  fig.asp = 1,
+  fig.align="center",
+  echo = TRUE,
+  message = FALSE, 
+  warning = FALSE,
+  hiline = TRUE,
+  cache=TRUE
+)
+options(knitr.kable.NA = '')
+knitr::opts_knit$set(global.par=TRUE)
+par(cex.main=0.9,cex.axis=0.8,cex.lab=0.8)
+options(scipen = 999)
+```
+
+We load the necessary packages:
+
+```{r packages}
+library(readxl)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(ggplot2)
+library(grid)
+library(tidyverse)
+library(splines)
+library(zCompositions)
+library(compositions)
+library(robCompositions)
+library(easyCODA)
+library(ALDEx2)
+library(viridis)
+library(plotly)
+library(ComplexHeatmap)
+library(stats)
+library(dendextend)
+library(RColorBrewer)
+library(kableExtra)
+library(vegan)
+library(ecolTest)
+library(factoextra)
+library(coda4microbiome)
+library(broom)
+source("funcionsCODAMETACIRCLE.R")
+
+
+opar=par()
+```
+
+```{r}
+library(flextable)
+set_flextable_defaults(
+  font.family = "Arial", font.size = 10, 
+  border.color = "gray", big.mark = "")
+```
+
+
+
+
+
+
+## Statistical analysis of biochemical and cellular parameters
+
+
+### Sulfur concentrations
+
+
+```{r}
+#Data and factors 
+datos <- read_table("Sulfur_data_28ago25.txt")
+datos$Species<-as.factor(datos$Species)
+datos$Treatment<-as.factor(datos$Treatment)
+datos$Time<-factor(datos$Time, levels = c("T0", "T2"))
+```
+
+
+```{r}
+#Group summary for plotting 
+df_summary <- datos %>%
+  group_by(Time, Species, Treatment) %>%
+  summarise(
+    mean_sulfur = mean(Sulfur, na.rm = TRUE),
+    sd_sulfur   = sd(Sulfur, na.rm = TRUE),
+    n           = n(),
+    se_sulfur   = sd_sulfur / sqrt(n)
+  ) %>%
+  ungroup()
+
+# --- Figure (as in the paper: means ± SE) ---
+p_a<- ggplot() +
+  geom_jitter(data = datos,
+              aes(x = Time, y = Sulfur, color = Species, 
+                  shape = Treatment),
+              width = 0.1,  
+              alpha = 0.4,
+              size = 1.2) +
+  geom_line(data = df_summary,
+            aes(x = Time, 
+                y = mean_sulfur, 
+                color = Species, 
+                group = interaction(Species, Treatment),
+                linetype = Treatment),
+            size = 1) +
+  geom_point(data = df_summary,
+             aes(x = Time, 
+                 y = mean_sulfur, 
+                 color = Species, 
+                 shape = Treatment),
+             size = 3) +
+  geom_errorbar(data = df_summary,
+                aes(x = Time, 
+                    ymin = mean_sulfur - se_sulfur,
+                    ymax = mean_sulfur + se_sulfur,
+                    color = Species),
+                width = 0.1,
+                size = 1.2) +
+  scale_color_manual(values = c("CAU" = "#008ae6", "CYM" = "#ff751a")) +
+  labs(
+    x = "Time",
+    y = expression(paste("Sulfur (", mu, "M)")),
+    color = "Species",
+    shape = "Treatment",
+    linetype = "Treatment"
+  ) +
+  theme_minimal() +
+  theme(axis.title.x = element_text(face = "bold"),
+        axis.title.y = element_text(face = "bold"),
+        axis.text.x  = element_text(face = "bold"),
+        legend.title = element_text(face = "bold")
+        ) +
+  coord_cartesian(ylim = c(400, 1400)) +  
+  scale_y_continuous(
+    breaks = seq(400, 1400, by = 100)      
+  ) 
+
+p_a
+```
+
+The figure shows sulfur concentrations (mean ± SE) at baseline (T0) and after exposure (T2) for sediments colonized by Caulerpa (blue) and Cymodocea (orange) under control (solid lines) and heatwave (dashed lines) conditions. In both species, sulfur levels increased from T0 to T2. The increase was evident under both control and heatwave treatments in Caulerpa, whereas in Cymodocea the rise was more pronounced under heatwave conditions. Individual data points (faded symbols) illustrate the variability within groups.
+
+
+To evaluate changes in sediment sulfur concentration, we applied a nonparametric testing framework. First, we examined within-group temporal changes (T0 vs T2) separately for each Species × Treatment using Wilcoxon tests, with p-values adjusted by the Benjamini–Hochberg procedure. We then compared treatments at T2 (Control vs Heatwave) within each species to assess whether heatwave exposure altered sulfur at the final time point. This two-step approach provides both temporal (within-group) and treatment-level (between-group) perspectives on sulfur dynamics.
+
+We first report group medians at T0 and T2 and their difference (Δ = T2 − T0) for each Species × Treatment. These summaries are descriptive and motivate the subsequent nonparametric tests.
+
+```{r}
+medians <- datos %>%
+  group_by(Species, Treatment, Time) %>%
+  summarise(median_sulfur = median(Sulfur, na.rm = TRUE), n = dplyr::n(), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = Time, values_from = median_sulfur) %>%
+  # Opción A: con comillas invertidas (recomendado)
+  mutate(delta_median = `T2` - `T0`)
+  # Opción B (alternativa robusta):
+  # mutate(delta_median = get("T2") - get("T0"))
+
+knitr::kable(medians, digits = 2, caption = "Medians by group and change (T2 - T0)")
+
+```
+
+We then formally tested T0 vs T2 within each Species × Treatment using Wilcoxon rank–sum tests, controlling the false discovery rate with Benjamini–Hochberg adjustment.
+
+```{r}
+time_tests <- datos %>%
+  dplyr::group_by(Species, Treatment) %>%
+  dplyr::summarise(
+    p = {
+      d <- dplyr::cur_data()
+      x <- d$Sulfur[d$Time == "T0"]
+      y <- d$Sulfur[d$Time == "T2"]
+      if (length(x) > 0 && length(y) > 0) {
+        suppressWarnings(stats::wilcox.test(x, y, exact = FALSE)$p.value)
+      } else {
+        NA_real_
+      }
+    },
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(p_adj = p.adjust(p, method = "BH"))
+
+knitr::kable(time_tests, digits = 3,
+             caption = "Wilcoxon (T0 vs T2) per Species × Treatment (BH-adjusted p)")
+```
+
+
+These outputs provide a basis for the statement that sulfur increased in both species and that the rise was more pronounced under heatwave conditions—particularly for Cymodocea at T2.
+
+
+#### Difference-in-Differences (DiD) models
+
+To complement the nonparametric analyses and jointly assess the effects of time and treatment, a difference-in-differences (DiD) model was applied separately for each species. This approach makes it possible to test whether the temporal change in sulfur differs significantly between control and heatwave conditions, while accounting for the main effects of treatment and time. In particular, the interaction term (Treatment × Time) captures the differential effect attributable to the heatwave at the final time point (TF), thus providing a direct measure of the magnitude of the treatment impact in each species.
+
+*Cymodocea — sulfur analysis*
+
+```{r}
+cy <- datos %>%
+  dplyr::filter(Species == "CYM")
+
+cy$Treatment <- factor(cy$Treatment, levels = c("Control", "HW"))
+cy$Time      <- factor(cy$Time,      levels = c("T0", "T2"))
+
+fit_cy <- lm(Sulfur ~ Treatment + Time + Treatment:Time, data = cy)
+summary(fit_cy)
+```
+
+
+In Cymodocea, sulfur concentrations increased significantly from T0 to T2 under control conditions (Time effect: p = 0.048). The DiD model further estimated an additional increase under heatwave exposure at T2 (interaction coefficient = 129.7), consistent with the descriptive pattern of a more pronounced rise under heatwave conditions. However, this differential effect was not statistically significant (p = 0.26), indicating that while the data suggest a stronger increase in Cymodocea under heatwave exposure, statistical support for this effect remains moderate.
+
+*Caulerpa — sulfur analysis*
+
+```{r}
+ca <- datos %>%
+  dplyr::filter(Species == "CAU")
+
+ca$Treatment <- factor(cy$Treatment, levels = c("Control", "HW"))
+ca$Time      <- factor(cy$Time,      levels = c("T0", "T2"))
+
+fit_ca <- lm(Sulfur ~ Treatment + Time + Treatment:Time, data = ca)
+summary(fit_ca)
+```
+
+In Caulerpa, sulfur concentrations increased significantly from T0 to T2 under control conditions (Time effect: p < 0.001). The DiD model further estimated an additional increase under heatwave exposure at T2 (interaction coefficient = 114.9), consistent with the descriptive pattern of greater accumulation under heatwave conditions. However, this differential effect was not statistically significant (p = 0.17), indicating that while sulfur accumulation clearly occurred over time, the evidence for an extra increase driven by heatwave exposure remains moderate.
+
+
+### Redox potential
+
+```{r}
+#Data
+datos <- read_table("redox_data_12feb25.txt")
+datos$Species<-as.factor(datos$Species)
+datos$Treatment<-as.factor(datos$Treatment)
+datos$Time<-factor(datos$Time, levels = c("T0", "T2"))
+```
+
+```{r}
+#Group summary for plotting
+df_summary <- datos %>%
+  group_by(Time, Species, Treatment) %>%
+  summarise(
+    mean_redox = mean(redox, na.rm = TRUE),
+    sd_redox   = sd(redox, na.rm = TRUE),
+    n           = n(),
+    se_redox   = sd_redox / sqrt(n)
+  ) %>%
+  ungroup()
+
+
+p_b <- ggplot() +
+  geom_jitter(data = datos,
+              aes(x = Time, y = redox, color = Species, shape = Treatment),
+              width = 0.1,  
+              alpha = 0.4,
+              size = 1.2) +
+  
+  geom_line(data = df_summary,
+            aes(x = Time, 
+                y = mean_redox, 
+                color = Species, 
+                group = interaction(Species, Treatment),
+                linetype = Treatment),
+            size = 1) +
+  geom_point(data = df_summary,
+             aes(x = Time, 
+                 y = mean_redox, 
+                 color = Species, 
+                 shape = Treatment),
+             size = 3) +
+  geom_errorbar(data = df_summary,
+                aes(x = Time, 
+                    ymin = mean_redox - se_redox,
+                    ymax = mean_redox + se_redox,
+                    color = Species),
+                width = 0.1,
+                size = 1.2) +
+  scale_color_manual(values = c("CAU" = "#008ae6", "CYM" = "#ff751a")) +
+  labs(
+    x = "Time",
+    y = expression(paste("redox (",m, "M)")) ,
+    color = "Species",
+    shape = "Treatment",
+    linetype = "Treatment"
+  ) +
+  theme_minimal() + 
+  theme(axis.title.x = element_text(face = "bold"),
+         axis.title.y = element_text(face = "bold"),
+        axis.text.x  = element_text(face = "bold"),
+        legend.title = element_text(face = "bold")
+        ) +
+   coord_cartesian(ylim = c(-430, -330)) +  
+   scale_y_continuous(
+     breaks = seq(-430, -330, by = 10)      
+   )
+p_b
+```
+
+The figure shows sediment redox potential (mean ± SE) at baseline (T0) and after exposure (T2) for sediments colonized by Caulerpa (blue) and Cymodocea (orange) under control (solid lines) and heatwave (dashed lines) conditions. In Caulerpa, redox potential declined significantly from T0 to T2 under control conditions but remained stable under heatwave conditions. In Cymodocea, redox potential also decreased over time, with a stronger decline under heatwave treatment.
+
+To evaluate changes in sediment redox potential, we applied a nonparametric testing framework. First, we examined within-group temporal changes (T0 vs T2) separately for each Species × Treatment using Wilcoxon tests, with p-values adjusted by the Benjamini–Hochberg procedure. We then compared treatments at T2 (Control vs Heatwave) within each species to assess whether heatwave exposure altered redox potential at the final time point. This two-step approach provides both temporal (within-group) and treatment-level (between-group) perspectives on redox dynamics.
+
+
+We present a nonparametric analysis of sediment redox potential. First, we assess within-group change from T0 to T2 for each Species × Treatment using Wilcoxon tests and compare treatments at T2 within each species. P-values are adjusted for multiple testing with the Benjamini–Hochberg procedure
+
+```{r}
+eh_within <- datos %>%
+  dplyr::group_by(Species, Treatment) %>%
+  dplyr::summarise(
+    p = {
+      d <- dplyr::cur_data()
+      x <- d$redox[d$Time == "T0"]
+      y <- d$redox[d$Time == "T2"]
+      if (length(x) > 0 && length(y) > 0) {
+        suppressWarnings(stats::wilcox.test(x, y, exact = FALSE)$p.value)
+      } else NA_real_
+    },
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(p_adj = p.adjust(p, method = "BH"))
+
+knitr::kable(eh_within, digits = 3,
+             caption = "Wilcoxon (T0 vs T2) by Species × Treatment (BH-adjusted p)")
+
+```
+
+These summaries show that redox potential generally decreased over time, with the largest declines occurring in Caulerpa under control conditions and in Cymodocea under heatwave conditions. These descriptive patterns motivated the subsequent nonparametric tests.
+
+```{r}
+eh_t2_bt <- datos %>%
+  dplyr::filter(Time == "T2") %>%
+  dplyr::group_by(Species) %>%
+  dplyr::summarise(
+    p = {
+      d <- dplyr::cur_data()
+      if (dplyr::n_distinct(d$Treatment) >= 2) {
+        suppressWarnings(stats::wilcox.test(redox ~ Treatment, data = d, exact = FALSE)$p.value)
+      } else NA_real_
+    },
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(p_adj = p.adjust(p, method = "BH"))
+
+knitr::kable(eh_t2_bt, digits = 3,
+             caption = "Wilcoxon (Treatment) at T2 by Species (BH-adjusted p)")
+```
+
+Overall, redox potential tended to decrease from T0 to T2, but the magnitude and significance of these shifts varied across species and treatments. In Caulerpa, a significant decline was detected under control conditions (BH-adjusted p = 0.020), whereas no change was observed under heatwave conditions. In Cymodocea, redox potential also decreased over time, with a trend towards stronger reductions under heatwave exposure (raw p = 0.045), though this did not remain significant after correction (BH-adjusted p = 0.091). Comparisons between treatments at T2 revealed no differences for Caulerpa and only a marginal effect for Cymodocea (BH-adjusted p = 0.091). 
+
+#### Difference-in-Differences (DiD) models
+
+We fitted difference-in-differences (DiD) models for each species. This framework evaluates whether changes in redox potential from T0 to T2 differed between control and heatwave conditions, while simultaneously accounting for the main effects of treatment and temporal progression. The key parameter of interest is the interaction term (Treatment × Time), which quantifies the additional effect attributable to heatwave exposure at the final sampling point (T2), thereby offering a direct estimate of the treatment-specific impact.
+
+*Cymodocea — redox analysis*
+
+```{r}
+fit_cy <- lm(Redox ~ Treatment + Time + Treatment:Time, data = cy)
+summary(fit_cy)
+```
+
+In Cymodocea, redox potential declined significantly from T0 to T2 under control conditions (Time effect: –20.7, p = 0.041). The DiD model further estimated an additional reduction under heatwave exposure at T2 (interaction coefficient = –19.1), consistent with the descriptive observation of stronger declines under heatwave conditions. However, this interaction was not statistically significant (p = 0.18), indicating that while the data suggest a heatwave-driven intensification of the temporal decline in redox potential, the statistical support for this effect remains limited.
+
+*Caulerpa — redox analysis*
+
+```{r}
+fit_ca <- lm(Redox ~ Treatment + Time + Treatment:Time, data = ca)
+summary(fit_ca)
+```
+
+In Caulerpa, redox potential showed no significant temporal change from T0 to T2 under control conditions (Time effect: –6.5, p = 0.36). The model estimated a slightly lower baseline under heatwave compared to control at T0 (Treatment effect: –13.8, p = 0.059), suggesting a marginal initial difference between treatments. However, the interaction term (Treatment × Time) was small and not significant (p = 0.86), indicating that heatwave exposure did not alter the temporal trajectory of redox potential. Overall, these results suggest that, unlike Cymodocea, the decline in redox observed in Caulerpa sediments was not exacerbated by heatwave conditions.
+
+### Cellular parameters
+
+We analyzed cell counts in sediments colonized by either Caulerpa or Cymodocea under control and heatwave conditions, assessing temporal changes (T0–T1–T2) within each Species × Treatment group as well as differences between species.
+
+```{r}
+#Data
+datos <- read_table("cell_shanon_data_12_05_25.txt") %>% 
+  mutate(
+    Species   = factor(Species),
+    Time      = factor(Time, levels = c("T0","T1","T2")),
+    Treatment = factor(Treatment),
+    cells     = as.numeric(cells)
+  )
+
+#Group summary for plotting
+summary_data <- datos %>%
+  group_by(Species, Treatment, Time) %>%
+  summarise(
+    mean_cells = mean(cells, na.rm = TRUE),
+    sd         = sd(cells,   na.rm = TRUE),
+    n          = n(),
+    se         = sd / sqrt(n),
+    .groups    = "drop"
+  )
+
+t1_hw <- summary_data %>% 
+  filter(Treatment == "HW", Time == "T1") %>%
+  select(Species, y    = mean_cells)
+t2_hw <- summary_data %>% 
+  filter(Treatment == "HW", Time == "T2") %>%
+  select(Species, yend = mean_cells)
+segments_hw <- left_join(t1_hw, t2_hw, by = "Species")
+
+t12     <- summary_data %>% filter(Time %in% c("T1","T2"))
+rango12 <- range(t12$mean_cells - t12$se, t12$mean_cells + t12$se)
+ymin12  <- rango12[1] - 0.025 * diff(rango12)
+ymax12  <- rango12[2] + 0.025 * diff(rango12)
+
+
+p_c<- ggplot() +
+  geom_jitter(
+    data  = datos,
+    aes(x = Time, y = cells, color = Species, shape = Treatment),
+    width = 0.1, alpha = 0.4, size = 1.2
+  ) +
+  geom_line(
+    data = summary_data,
+    aes(x = Time, y = mean_cells,
+        color    = Species,
+        linetype = Treatment,
+        group    = interaction(Species, Treatment)),
+    size = 1
+  ) +
+  geom_point(
+    data  = summary_data,
+    aes(x = Time, y = mean_cells, color = Species, shape = Treatment),
+    size = 3
+  ) +
+  geom_errorbar(
+    data = summary_data,
+    aes(x = Time,
+        ymin  = mean_cells - se,
+        ymax  = mean_cells + se,
+        color = Species),
+    width = 0.2, size = 1.25
+  ) +
+  geom_segment(
+    data      = summary_data,
+    aes(y     = 53800000,
+        yend  = 38700000,
+        color = "CYM"),
+    x      = 2,      
+    xend   = 3,     
+    linetype = "dashed",
+    size      = 1.5
+  ) +
+  geom_segment(
+    data      = summary_data,
+    aes(y     = 173333333,
+        yend  = 212000000,
+        color = "CAU"),
+    x      = 2,     
+    xend   = 3,     
+    linetype = "dashed",
+    size      = 1.5
+  ) +
+  scale_color_manual(name   = "Species",
+                     values = c("CAU" = "#008ae6", "CYM" = "#ff751a")) +
+  scale_shape_manual(name   = "Treatment",
+                     values = c("Control" = 16,  # circles filled
+                                "HW"      = 17)) +# triangles filled
+  scale_linetype_manual(name   = "Treatment",
+                        values = c("Control" = "solid",
+                                   "HW"      = "dashed")) +
+  guides(
+    shape    = guide_legend(override.aes = list(size = 3)),
+    linetype = guide_legend(override.aes = list(size = 1.5))
+  ) +
+  labs(
+    x        = "Time",
+    y        = "Cells",
+    color    = "Species",
+    shape    = "Treatment",
+    linetype = "Treatment"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    axis.text.x  = element_text(face = "bold"),
+    legend.title = element_text(face = "bold")
+  ) +
+  coord_cartesian(ylim = c(ymin12, ymax12)) +
+  scale_y_continuous(
+    breaks = pretty(c(ymin12, ymax12), n = 5),
+    labels = expression(0,5%*%10^7,1%*%10^8,1.5%*%10^8,2%*%10^8,2.5%*%10^8),
+    expand = expansion(mult = c(0,0))
+  )
+
+p_c
+```
+
+The figure shows cell counts in sediments colonized by Caulerpa (blue) and Cymodocea (orange) under control (solid lines) and heatwave (dashed lines) conditions across three time points (T0, T1, T2). In Caulerpa, cell numbers remained relatively stable from T0 to T1, followed by a marked increase under heatwave conditions at T2, while control samples decreased slightly. In contrast, Cymodocea exhibited consistently lower cell counts overall, with values remaining stable between T0 and T1 but declining toward T2 under both treatments, particularly under heatwave exposure.
+
+We first quantified the overall range of cell counts observed in each species to provide context for the magnitude of the differences.
+
+
+```{r}
+ranges <- datos %>%
+  group_by(Species) %>%
+  summarise(
+    min_cells = min(cells, na.rm = TRUE),
+    max_cells = max(cells, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(min_x1e9 = round(min_cells / 1e9, 1),
+         max_x1e9 = round(max_cells / 1e9, 1))
+
+knitr::kable(ranges, digits = 2, caption = "Species-wise ranges (×10^9 cells/g)")
+```
+
+These ranges highlight the broader scale of variation in Caulerpa compared with Cymodocea, providing a baseline for interpreting subsequent tests.
+
+
+To evaluate species-level differences, we first applied a Wilcoxon rank–sum test pooling across all time points and treatments.
+
+```{r}
+# Overall (pooling all times/treatments)
+bt_overall <- suppressWarnings(stats::wilcox.test(cells ~ Species, data = datos, exact = FALSE))
+
+# By time (T0, T1, T2) — useful to show consistency
+bt_by_time <- datos %>%
+  group_by(Time) %>%
+  summarise(
+    p = {
+      d <- cur_data()
+      suppressWarnings(stats::wilcox.test(d$cells ~ d$Species, exact = FALSE)$p.value)
+    },
+    .groups = "drop"
+  )
+
+knitr::kable(bt_by_time, digits = 3, caption = "Between-species Wilcoxon by Time")
+bt_overall$p.value
+
+```
+
+This overall comparison indicated that species differ in cell counts.
+
+To assess whether cell counts changed over time within each Species × Treatment combination, we first applied a nonparametric global test across the three sampling points (T0, T1, T2).
+
+```{r}
+# Kruskal–Wallis per group
+kw_time <- datos %>%
+  group_by(Species, Treatment) %>%
+  summarise(
+    kw_p = {
+      d <- cur_data()
+      if (n_distinct(d$Time) >= 2) {
+        suppressWarnings(kruskal.test(cells ~ Time, data = d)$p.value)
+      } else NA_real_
+    },
+    .groups = "drop"
+  )
+
+# Pairwise Wilcoxon per group (BH across the 3 pairwise contrasts within each group)
+pw_time <- datos %>%
+  group_by(Species, Treatment) %>%
+  group_modify(~{
+    d <- .x
+    # Need at least 2 time levels
+    if (n_distinct(d$Time) < 2) return(tibble())
+    pw <- pairwise.wilcox.test(d$cells, d$Time, p.adjust.method = "BH", exact = FALSE)
+    # Convert p-value matrix to long
+    M <- as.data.frame(as.table(pw$p.value))
+    names(M) <- c("Time1","Time2","p_adj")
+    M <- M %>% filter(!is.na(p_adj))
+    # Add direction using medians
+    meds <- d %>% group_by(Time) %>% summarise(med = median(cells, na.rm = TRUE), .groups="drop")
+    M <- M %>%
+      left_join(meds, by = c("Time1" = "Time")) %>% rename(med1 = med) %>%
+      left_join(meds, by = c("Time2" = "Time")) %>% rename(med2 = med) %>%
+      mutate(direction = case_when(
+        med2 > med1 ~ "increase",
+        med2 < med1 ~ "decrease",
+        TRUE ~ "no_change"
+      ))
+    M
+  }) %>%
+  ungroup()
+
+knitr::kable(kw_time, digits = 3, caption = "Kruskal–Wallis across T0–T1–T2 by Species × Treatment")
+knitr::kable(pw_time, digits = 3, caption = "Pairwise Wilcoxon (BH-adjusted) and median directions")
+```
+
+Although the nonparametric tests did not detect statistically significant within-group changes, the descriptive patterns in the figures suggest some biologically meaningful trends. In particular, Cymodocea under control conditions showed a consistent rise in median cell counts from T0 to T2, and Caulerpa exhibited fluctuations that point to a potential increase by the final time point. The absence of statistical significance likely reflects the limited sample size and variability within groups, rather than a complete lack of temporal dynamics. Thus, while the formal tests provide little evidence for strong within-group effects, the graphical trends indicate subtle trajectories that may become clearer with larger sample sizes or longer experimental follow-up.
+
+## Biodiversity
+
+Shannon diversity indices were computed with the diversity function in vegan and summarized by Species × Treatment × Time. We first visualized mean trajectories (±SE) together with individual observations to inspect temporal patterns and treatment contrasts.
+
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(grid)    
+
+datos <- read_table("cell_shanon_data_12_05_25.txt") %>% 
+  mutate(
+    Species   = factor(Species),
+    Time      = factor(Time, levels = c("T0","T1","T2")),
+    Treatment = factor(Treatment),
+    shanon     = as.numeric(shanon)
+  )
+
+summary_data <- datos %>%
+  group_by(Species, Treatment, Time) %>%
+  summarise(
+    mean_shanon = mean(shanon, na.rm = TRUE),
+    sd         = sd(shanon,   na.rm = TRUE),
+    n          = n(),
+    se         = sd / sqrt(n),
+    .groups    = "drop"
+  )
+
+
+t1_hw <- summary_data %>% 
+  filter(Treatment == "HW", Time == "T1") %>%
+  select(Species, y    = mean_shanon)
+t2_hw <- summary_data %>% 
+  filter(Treatment == "HW", Time == "T2") %>%
+  select(Species, yend = mean_shanon)
+segments_hw <- left_join(t1_hw, t2_hw, by = "Species")
+
+
+t12     <- summary_data %>% filter(Time %in% c("T1","T2"))
+rango12 <- range(t12$mean_shanon - t12$se, t12$mean_shanon + t12$se)
+ymin12  <- rango12[1] - 0.55 * diff(rango12)
+ymax12  <- rango12[2] + 0.25 * diff(rango12)
+
+
+p_d<- ggplot() +
+  geom_jitter(
+    data  = datos,
+    aes(x = Time, y = shanon, color = Species, shape = Treatment),
+    width = 0.1, alpha = 0.4, size = 1.2
+  ) +
+  geom_line(
+    data = summary_data,
+    aes(x = Time, y = mean_shanon,
+        color    = Species,
+        linetype = Treatment,
+        group    = interaction(Species, Treatment)),
+    size = 1
+  ) +
+  geom_point(
+    data  = summary_data,
+    aes(x = Time, y = mean_shanon, color = Species, shape = Treatment),
+    size = 3
+  ) +
+  geom_errorbar(
+    data = summary_data,
+    aes(x = Time,
+        ymin  = mean_shanon - se,
+        ymax  = mean_shanon + se,
+        color = Species),
+    width = 0.2, size = 1.25
+  ) +
+  geom_segment(
+    data      = summary_data,
+    aes(y     = 5.072667,
+        yend  = 5.056000,
+        color = "CYM"),
+    x      = 2,     
+    xend   = 3,      
+    linetype = "dashed",
+    size      = 1.5
+  ) +
+  geom_segment(
+    data      = summary_data,
+    aes(y     = 5.201667,
+        yend  = 5.180333,
+        color = "CAU"),
+    x      = 2,     
+    xend   = 3,      
+    linetype = "dashed",
+    size      = 1.5
+  ) +
+  scale_color_manual(name   = "Species",
+                     values = c("CAU" = "#008ae6", "CYM" = "#ff751a")) +
+  scale_shape_manual(name   = "Treatment",
+                     values = c("Control" = 16,  # circles filled
+                                "HW"      = 17)) +# triangles filled
+  scale_linetype_manual(name   = "Treatment",
+                        values = c("Control" = "solid",
+                                   "HW"      = "dashed")) +
+  guides(
+    shape    = guide_legend(override.aes = list(size = 3)),
+    linetype = guide_legend(override.aes = list(size = 1.5))
+  ) +
+  labs(
+    x        = "Time",
+    y        = "Shannon diversity index",
+    color    = "Species",
+    shape    = "Treatment",
+    linetype = "Treatment"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    axis.text.x  = element_text(face = "bold"),
+    legend.title = element_text(face = "bold")
+  ) +
+  coord_cartesian(ylim = c(ymin12, ymax12)) +
+  scale_y_continuous(
+    breaks = pretty(c(ymin12, ymax12), n = 5),
+    expand = expansion(mult = c(0,0))
+  ) 
+p_d
+```
+
+
+The plot shows that Caulerpa maintains relatively high and stable diversity across the experiment, with only slight changes between T1 and T2. Cymodocea exhibits a marked rise from T0 to T1, followed by a modest leveling or decline toward T2 under heatwave exposure, while control samples remain comparatively stable. These descriptive trends motivated formal between-species comparisons.
+
+To test whether species differed in Shannon diversity, we applied Wilcoxon rank–sum tests overall (pooling time points) and separately at each sampling time.
+
+
+```{r}
+## Overall (all times + treatments pooled)
+bt_overall <- suppressWarnings(stats::wilcox.test(shanon ~ Species, data = datos, exact = FALSE))
+bt_overall_p <- bt_overall$p.value
+
+## By time (T0, T1, T2)
+bt_by_time <- datos %>%
+  group_by(Time) %>%
+  summarise(
+    med_CAU = median(shanon[Species == "CAU"], na.rm = TRUE),
+    med_CYM = median(shanon[Species == "CYM"], na.rm = TRUE),
+    p = {
+      d <- cur_data()
+      suppressWarnings(stats::wilcox.test(d$shanon ~ d$Species, exact = FALSE)$p.value)
+    },
+    .groups = "drop"
+  )
+
+kable(bt_by_time, digits = 3, caption = "Between-species Wilcoxon by time (Shannon)")
+bt_overall_p
+
+```
+
+The overall Wilcoxon test indicated a species effect across time points (report printed bt_overall_p). By-time Wilcoxon tests (unadjusted p-values as printed in the table) suggest a marginal difference at T0, with higher diversity in Caulerpa, whereas differences at T1 and T2 were not statistically significant. Taken together, the figure and tests indicate that Caulerpa generally sustains higher Shannon diversity than Cymodocea, while temporal dynamics—especially the T0→T1 increase in Cymodocea and the slight T1→T2 softening under heatwave—are modest in magnitude.
+
+#### Acclimation change (T0 → T1) within species
+
+We next examined acclimation effects by directly comparing Shannon diversity between T0 and T1 for each species.
+
+```{r}
+acclim <- datos %>%
+  group_by(Species) %>%
+  summarise(
+    med_T0 = median(shanon[Time == "T0"], na.rm = TRUE),
+    med_T1 = median(shanon[Time == "T1"], na.rm = TRUE),
+    p = {
+      x <- shanon[Time == "T0"]; y <- shanon[Time == "T1"]
+      if (length(x) > 0 && length(y) > 0)
+        suppressWarnings(stats::wilcox.test(x, y, exact = FALSE)$p.value)
+      else NA_real_
+    },
+    direction = case_when(med_T1 > med_T0 ~ "increase",
+                          med_T1 < med_T0 ~ "decrease",
+                          TRUE            ~ "no_change"),
+    .groups = "drop"
+  )
+
+kable(acclim, digits = 3, caption = "T0 vs T1 (acclimation) by species")
+
+```
+
+During the acclimation period (T0 → T1), Shannon diversity showed a slight increase in both Caulerpa and Cymodocea sediments (median values rising from 5.19 to 5.20 and from 4.93 to 5.06, respectively). However, these changes were not statistically significant (p = 0.66 for Caulerpa, p = 0.38 for Cymodocea), indicating that although diversity tended to rise during acclimation, the magnitude of the increase was modest and within the range of sampling variability.
+
+### Temporal change under Control (T0–T1–T2)
+
+To assess whether Shannon diversity varied over time in the absence of heatwave stress, we applied Kruskal–Wallis tests separately for Caulerpa and Cymodocea under control conditions. This approach evaluates overall differences across the three sampling times (T0, T1, T2) without assuming normality.
+
+```{r}
+datos <- read_table("cell_shanon_data_12_05_25_complete.txt") %>% 
+  mutate(
+    Species   = factor(Species),
+    Time      = factor(Time, levels = c("T0","T1","T2")),
+    Treatment = factor(Treatment),
+    cells     = as.numeric(cells)
+  )
+
+kw_ctrl <- datos %>%
+  filter(Treatment == "Control") %>%
+  group_by(Species) %>%
+  summarise(
+    kw_p = {
+      d <- cur_data()
+      suppressWarnings(kruskal.test(shanon ~ Time, data = d)$p.value)
+    },
+    .groups = "drop"
+  )
+
+kable(kw_ctrl, digits = 3, caption = "Kruskal–Wallis test across T0–T1–T2 under control conditions (by species)")
+```
+
+The results (Table) show no significant temporal variation in Shannon diversity under control conditions (p = 0.733 for Caulerpa, p = 0.432 for Cymodocea). This indicates that, in the absence of heatwave exposure, microbial diversity remained relatively stable across the course of the experiment in both host species.
+
+### Temporal change under Heatwave (T0- T1–T2)
+
+To evaluate whether heatwave exposure altered the temporal trajectory of Shannon diversity, we applied Kruskal–Wallis tests across the three time points within each species.
+
+```{r}
+kw_hw <- datos %>%
+  filter(Treatment == "HW") %>%
+  group_by(Species) %>%
+  summarise(
+    kw_p = {
+      d <- cur_data()
+      suppressWarnings(kruskal.test(shanon ~ Time, data = d)$p.value)
+    },
+    .groups = "drop"
+  )
+
+kable(kw_hw, digits = 3, caption = "Kruskal–Wallis across T0–T1–T2 under heatwave conditions (by species)")
+```
+
+Under heatwave conditions, no significant temporal changes were detected in either species (Caulerpa: p = 0.875; Cymodocea: p = 0.288). These results indicate that, while the figure suggests a slight T1→T2 softening in Cymodocea under heatwave exposure, the magnitude of the shift was insufficient to reach statistical significance. Combined with the control analysis, this supports the view that Shannon diversity remained broadly stable over time in both species, with only modest, non-significant fluctuations under heat stress.
+
+### Caulerpa control averages between T1 and T2
+
+To probe short-interval changes under control conditions, we compared Shannon diversity between T1 and T2 for Caulerpa using descriptive summaries and a Wilcoxon test as a robust alternative to the Welch t-test.
+
+```{r}
+target_var <- "shanon"
+
+dat <- datos %>%
+  filter(Species == "CAU", Treatment == "Control", Time %in% c("T1","T2")) %>%
+  select(ID = dplyr::any_of("ID"), Time, value = all_of(target_var)) %>%
+  filter(!is.na(value))
+
+summary_tbl <- dat %>%
+  group_by(Time) %>%
+  summarise(
+    n    = dplyr::n(),
+    mean = mean(value),
+    sd   = sd(value),
+    se   = sd/sqrt(n),
+    .groups = "drop"
+  )
+
+knitr::kable(summary_tbl, digits = 3,
+             caption = "Caulerpa — Control: comparison of Shannon diversity between T1 and T2 (mean, SD, SE, n)")
+
+tt_welch <- t.test(value ~ Time, data = dat, var.equal = FALSE)
+tt_welch
+
+w_test <- stats::wilcox.test(value ~ Time, data = dat, exact = FALSE)
+w_test
+```
+
+The summary table shows nearly identical means at T1 and T2 (5.202 vs 5.195), with small standard errors. Welch’s test confirmed no evidence of a difference (t = 0.138, df = 3.35, p = 0.898; 95% CI for the mean difference: −0.145 to 0.159). Results were consistent with the Welch test, showing no evidence of a difference between time points (Wilcoxon p = 1). Given the very small sample size (n = 3 per time), these findings should be interpreted as compatible with negligible change rather than proof of no effect. Thus, Shannon diversity in Caulerpa remained stable between T1 and T2 under control conditions.
+
+
+
+### Caulerpa heatwave averages between T1 and T2
+
+To check short-interval changes under heatwave conditions, we compared Shannon diversity between T1 and T2 for Caulerpa using descriptive summaries and a Wilcoxon test as a robust alternative to the Welch t-test.
+
+```{r}
+
+dat <- datos %>%
+  filter(Species == "CAU", Treatment == "HW", Time %in% c("T1","T2")) %>%
+  select(ID = dplyr::any_of("ID"), Time, value = all_of(target_var)) %>%
+  filter(!is.na(value))
+
+summary_tbl <- dat %>%
+  group_by(Time) %>%
+  summarise(
+    n    = dplyr::n(),
+    mean = mean(value),
+    sd   = sd(value),
+    se   = sd/sqrt(n),
+    .groups = "drop"
+  )
+
+knitr::kable(summary_tbl, digits = 3,
+             caption = "Caulerpa – HW: T1 vs T2 (mean, SD, n)")
+
+tt_welch <- t.test(value ~ Time, data = dat, var.equal = FALSE)
+tt_welch
+
+w_test <- stats::wilcox.test(value ~ Time, data = dat, exact = FALSE)
+w_test
+```
+
+The summary table shows very similar means at T1 and T2 (5.202 vs 5.180) with small standard errors. Both Welch’s test (t = 0.235, df = 3.07, p = 0.829; 95% CI for the mean difference: –0.264 to 0.308) and the Wilcoxon rank-sum test (W = 4, p = 1.00) indicated no evidence of a difference between the two time points. Thus, under heatwave conditions, Caulerpa diversity remained essentially stable between T1 and T2. Given the small sample size (n = 3 per time), these results should be interpreted as consistent with a negligible effect rather than proof of no effect.
+
+### Cymodocea control averages between T1 and T2
+
+```{r}
+dat <- datos %>%
+  filter(Species == "CYM", Treatment == "Control", Time %in% c("T1","T2")) %>%
+  select(ID = dplyr::any_of("ID"), Time, value = all_of(target_var)) %>%
+  filter(!is.na(value))
+
+summary_tbl <- dat %>%
+  group_by(Time) %>%
+  summarise(
+    n    = dplyr::n(),
+    mean = mean(value),
+    sd   = sd(value),
+    se   = sd/sqrt(n),
+    .groups = "drop"
+  )
+
+knitr::kable(summary_tbl, digits = 3,
+             caption = "Cymodocea – Control: T1 vs T2 (mean, SD, n)")
+
+tt_welch <- t.test(value ~ Time, data = dat, var.equal = FALSE)
+tt_welch
+
+w_test <- stats::wilcox.test(value ~ Time, data = dat, exact = FALSE)
+w_test
+```
+
+The summary statistics indicate that Cymodocea maintained very similar Shannon diversity values between T1 (mean = 5.073, SE = 0.095) and T2 (mean = 5.084, SE = 0.117). Both Welch’s two-sample t-test (t = –0.077, df = 3.84, p = 0.942) and the Wilcoxon rank-sum test (W = 5, p = 1.00) confirmed the absence of significant differences between the two time points. These findings suggest that under control conditions, Cymodocea diversity remained stable across the short interval from T1 to T2, with no detectable changes despite minor variation in the group means.
+
+
+### Cymodocea heatwave averages between T1 and T2
+
+```{r}
+
+dat <- datos %>%
+  filter(Species == "CYM", Treatment == "HW", Time %in% c("T1","T2")) %>%
+  select(ID = dplyr::any_of("ID"), Time, value = all_of(target_var)) %>%
+  filter(!is.na(value))
+
+summary_tbl <- dat %>%
+  group_by(Time) %>%
+  summarise(
+    n    = dplyr::n(),
+    mean = mean(value),
+    sd   = sd(value),
+    se   = sd/sqrt(n),
+    .groups = "drop"
+  )
+
+knitr::kable(summary_tbl, digits = 3,
+             caption = "Cymodocea – HW: T1 vs T2 (mean, SD, n)")
+
+tt_welch <- t.test(value ~ Time, data = dat, var.equal = FALSE)
+tt_welch
+
+w_test <- stats::wilcox.test(value ~ Time, data = dat, exact = FALSE)
+w_test
+```
+
+The descriptive statistics for Cymodocea under heatwave conditions show nearly identical Shannon diversity means at T1 (5.073, SE = 0.095) and T2 (5.056, SE = 0.061). Welch’s two-sample t-test found no evidence of a difference (t = 0.148, df = 3.41, p = 0.891; 95% CI: –0.320 to 0.352), and the Wilcoxon rank-sum test likewise indicated no shift in location (W = 5, p = 1.00). 
+
+## Taxa biodiversity analysis
+
+
+```{r, data}
+Datos.Muestras=data.frame(read_excel("TablaOTUs.xlsx"))
+Samples.original=Datos.Muestras$ID 
+DF.0.original=Datos.Muestras[,-c(1,2)]
+row.names(DF.0.original)=Samples.original
+OTUs=paste("OTU",1:dim(DF.0.original)[2],sep="")
+names(DF.0.original)=OTUs
+
+Sizes=rowSums(DF.0.original)
+
+Tipos.original=as.factor(rep(c("CAU_T0","CAU_T1","CAU_T2C", "CAU_T2HW","CYM_T0","CYM_T1", "CYM_T2C","CYM_T2HW"),each=3))
+```
+
+
+
+### Comparison of Shannon indices indices of sample types
+
+
+We have quantified the biodiversity of every type of samples CAU_T* or CYM_T* by means of the Shannon index of the sample obtained by merging the 3 samples of that type. To test which pairs of sample types had significantly different Shannon indices, we have used the Hutcheson t-test, as implemented in function `Hutcheson_t_test` of the R package `ecolTest`, and adjusted the p-values with the Holm method.
+
+
+
+```{r funciones}
+# Shannon index
+SH=function(x){
+  vegan::diversity(x,index = "shannon")
+}
+
+p.lnp2=function(p){
+  if (p==0){return(0)}
+  else {
+    return(p*(log(p)^2))
+  }
+}
+
+# Hutcheson variance estimator
+Var.SH=function(x){
+N=sum(x)
+y=sapply(x/sum(x),FUN=p.lnp2)
+bit=sapply(x,FUN=function(x){min(x,1)})
+S=sum(bit)
+vv=(sum(y)-SH(x)^2)/N+(S-1)/(2*N^2)
+return(vv)
+}
+
+# Standard deviation estimator
+sd.SH=function(x){
+  sqrt(Var.SH(x))
+}
+
+```
+
+
+```{r}
+Samples=Samples.original
+DF.0=DF.0.original
+Tipos=Tipos.original
+DF.0.agrup=aggregate(DF.0,by=list(Tipos),FUN=sum)[,-1]
+```
+
+
+For each sample, we compute its Shannon index and an estimation of its standard deviation (sd):
+
+
+```{r}
+Resultados=data.frame(Samples,
+round(apply(DF.0,MARGIN=1,SH),4),
+round(apply(DF.0,MARGIN=1,sd.SH),4))
+row.names(Resultados)=NULL
+names(Resultados)=c("Samples","SH","sd")
+
+flextable(Resultados)|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 0.9) 
+```
+
+The next graphic depicts, for each sample, its Shannon index $SH$ and the error bar $SH\pm 2\cdot sd$. 
+
+
+
+```{r}
+row.names(Resultados)=Samples
+
+plot(0.1*(1:24),Resultados$SH,
+     col=rep(c(rep("green",3),rep("blue",3),rep("purple",3),rep("red",3)),2), 
+     pch=c(rep(20,12),rep(18,12)),cex=1,
+     xlab="",ylab="Shannon index",xaxt='n',
+     main="All samples")
+legend("bottomleft",col=c("black","black","green","blue","purple","red"),
+       pch=c(20,18,NA,NA,NA,NA),
+       lty=c(NA,NA,1,1,1,1),
+       legend=c("CAU","CYM","T0","T1","T2C","T2HW"),
+       seg.len=0.5,cex=0.5)
+segments(0.1*(1:24),Resultados$SH-2*Resultados$sd,
+         0.1*(1:24),Resultados$SH+2*Resultados$sd,
+         col=rep(c(rep("green",3),rep("blue",3),rep("purple",3),rep("red",3)),2),lwd=1.5)
+```
+
+
+We repeat the process for sample types: for each sample type, we merge all three samples of that type into a single sample. We include the intervals (SH-3·sd,SH+3·sd). The reason for the factor 3 is that there are 36 pairs of samples to compare, and hence we use as factor for sd the 0.95^1/36^ quantile of the standard normal distribution. In this way, disjoint intervals give statistical evidence (at the 5% signification level) that the corresponding two indices are different.
+
+
+
+```{r}
+Resultados.agrupados=data.frame(levels(Tipos),
+round(apply(DF.0.agrup,MARGIN=1,SH),4),
+round(apply(DF.0.agrup,MARGIN=1,sd.SH),4),
+round(apply(DF.0.agrup,MARGIN=1,SH)-3*apply(DF.0.agrup,MARGIN=1,sd.SH),4),
+round(apply(DF.0.agrup,MARGIN=1,SH)+3*apply(DF.0.agrup,MARGIN=1,sd.SH),4)
+)
+row.names(Resultados.agrupados)=NULL
+names(Resultados.agrupados)=c("Samples","SH","sd","SH-3sd","SH+3sd")
+
+flextable(Resultados.agrupados)|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 0.9) 
+```
+
+
+
+
+```{r}
+plot(0.1*(1:8),Resultados.agrupados$SH,col=rep(c("green","blue","purple","red"),2),
+     pch=c(rep(20,4),rep(18,4)),
+     xlab="",ylab="Shannon index",xaxt='n',
+     main="All sample types")
+segments(0.1*(1:8),Resultados.agrupados$SH-3*Resultados.agrupados$sd,
+         0.1*(1:8),Resultados.agrupados$SH+3*Resultados.agrupados$sd,
+         col=rep(c("green","blue","purple","red"),2),lwd=1.5)
+legend("bottomleft",col=c("black","black","green","blue","purple","red"),
+       pch=c(20,18,NA,NA,NA,NA),
+       lty=c(NA,NA,1,1,1,1),
+      legend=c("CAU","CYM","T0","T1","T2C","T2HW"),
+       seg.len=0.5,cex=0.5)
+```
+
+SH indices of CAU samples are significantly different from (and actually significantly larger than)  those of CYM samples.
+
+```{r}
+plot(0.1*(1:4),Resultados.agrupados$SH[1:4],col=c("green","blue","purple","red"),
+     pch=20,main="CAU sample types",
+     xlab="",ylab="Shannon index",xaxt='n',
+     ylim=c(min(Resultados.agrupados$SH[1:4]-3*Resultados.agrupados$sd[1:4]),
+              max(Resultados.agrupados$SH[1:4]+3*Resultados.agrupados$sd[1:4])))
+segments(0.1*(1:4),Resultados.agrupados$SH[1:4]-3*Resultados.agrupados$sd[1:4],
+         0.1*(1:4),Resultados.agrupados$SH[1:4]+3*Resultados.agrupados$sd[1:4],
+         col=c("green","blue","purple","red"),lwd=1.5)
+legend("topright",col=c("green","blue","purple","red"),
+       pch=20,legend=c("T0","T1","T2C","T2HW"),seg.len=0.5,cex=0.5)
+```
+
+Only the SH index of T0 samples seems to be significantly different from the others.
+
+
+```{r}
+plot(0.1*(1:4),Resultados.agrupados$SH[5:8],col=c("green","blue","purple","red"),
+     pch=18,main="CYM sample types",
+     xlab="",ylab="Shannon index",xaxt='n',          ylim=c(min(Resultados.agrupados$SH[5:8]-3*Resultados.agrupados$sd[5:8]),max(Resultados.agrupados$SH[5:8]+3*Resultados.agrupados$sd[5:8])))
+segments(0.1*(1:4),Resultados.agrupados$SH[5:8]-3*Resultados.agrupados$sd[5:8],
+         0.1*(1:4),Resultados.agrupados$SH[5:8]+3*Resultados.agrupados$sd[5:8],
+         col=c("green","blue","purple","red"),lwd=1.5)
+legend("topleft",col=c("green","blue","purple","red"),
+       pch=18,legend=c("T0","T1","T2C","T2HW"),seg.len=0.5,cex=0.5)
+```
+
+All four SH indices are significantly different, except for T1 and T2C.
+
+We can use Hutcheson t-test to decide whether Shannon indices are significantly different. We perform pairwise comparisons and adjust the p-values using the Holm method. The conclusions are the same.
+
+
+```{r}
+pvalSH.G=matrix(NA,nrow=8,ncol=8)
+for (i in 1:7){
+  for (j in (i+1):8){
+   pvalSH.G[i,j]= Hutcheson_t_test(DF.0.agrup[i,],DF.0.agrup[j,])$p.value
+  }
+}
+pvalSH.G=matrix(p.adjust(pvalSH.G,method="holm"),nrow=8)
+
+colnames(pvalSH.G)=levels(Tipos)
+row.names(pvalSH.G)=levels(Tipos)
+
+flextable(data.frame(round(pvalSH.G,6)))|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 0.9) 
+```
+
+
+
+
+
+
+
+
+### Behaviour of Shannon indices under thresholds
+
+We address the following question: If we set a threshold $p_0$, we only retain from each sample the OTUs that appear with a relative frequency $\geqslant p_0$ and calculate the Shannon index (SH) of those samples, how does its longitudinal behavior vary from T0->T1->T2C->T2HW as $p_0$ increases?
+
+We use the following method to answer this question:
+
+- We  consider $p_0$ thresholds from 0.00005 (0.005%) to 0.05 (5%), advancing in steps of 0.00005.
+- For each threshold, in each sample, we retain the OTUs whose relative frequency is $\geqslant p_0$
+- Then, we group the samples by sample type and compute the SH of the grouped samples.
+- We visually analyze the trend in SH among CAU and CYM samples as $p_0$ increases.
+- We also compute, for each type of sample and for relevant thresholds, the proportion of OTUs present in **at least one** sample of that type whose relative frequency in all three samples of that type is greater than or equal to the threshold.
+
+
+We obtain that, in the CAU samples, at some point between the 0.15% and 0.2% thresholds, and in the CYM samples, at some point between the 0.1% and 0.15% thresholds, the longitudinal behavior of the SH changes for the first time from that observed in the whole samples, shifting from a rise-fall-fall pattern to a rise-fall-rise pattern.
+
+For each type of CAU sample, around 12-13% of OTUs present in at least one sample of this type have relative frequency in all three samples of that type greater than or equal to 0.1%. For CYM sample types, this figure descends to 9-10%. 
+
+
+
+
+
+
+```{r}
+# threshold
+llindar=function(x,l){
+if (x>=l){return(1)}
+  else{return(0)}
+}
+```
+
+
+
+```{r}
+#Global sample
+DF.0=as.matrix(DF.0)
+DF.0.prop=DF.0/rowSums(DF.0)
+DF.0.agrup=as.matrix(DF.0.agrup)
+DF.0.agrup.prop=DF.0.agrup/rowSums(DF.0.agrup)
+```
+
+Original sample sizes and range of proportions within them:
+
+```{r}
+Tamaños=rowSums(DF.0)
+Props.min=round(apply(DF.0.prop,MARGIN=1,function(x){min(x[x>0])}),6)
+Props.max=apply(DF.0.prop,MARGIN=1,function(x){max(x[x>0])})
+Info=data.frame(Tamaños,Props.min,Props.max)
+names(Info)=c("Size","Smallest prop.","Largest prop.")
+
+flextable(Info)|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 0.9) 
+   
+```
+
+#### Original sample
+
+```{r}
+Resultados.Agrupados=data.frame(
+  SH=apply(DF.0.agrup,MARGIN=1,SH),
+  Varianza=apply(DF.0.agrup,MARGIN=1,Var.SH))
+```
+
+
+
+
+
+```{r,   fig.width=6, out.width="50%"}
+##
+plot(0.1*(1:8),Resultados.Agrupados$SH,col=rep(c("green","blue","purple","red"),2),
+     pch=c(rep(20,4),rep(18,4)),
+     xlab="",ylab="SH",xaxt='n',
+     main="Grouped samples")
+segments(0.1*(1:8),Resultados.Agrupados$SH-3*sqrt(Resultados.Agrupados$Varianza),
+         0.1*(1:8),Resultados.Agrupados$SH+3*sqrt(Resultados.Agrupados$Varianza),
+         col=rep(c("green","blue","purple","red"),2),lwd=1.5)
+legend("topright",col=c("black","black","green","blue","purple","red"),
+       pch=c(20,18,NA,NA,NA,NA),
+       lty=c(NA,NA,1,1,1,1),
+      legend=c("CAU","CYM","T0","T1","T2C","T2HW"),
+       seg.len=0.5,cex=0.5)
+#
+plot(0.1*(1:4),Resultados.Agrupados$SH[1:4],col=c("green","blue","purple","red"),
+     pch=20,main="Grouped samples: CAU",
+     xlab="",ylab="SH",xaxt='n',
+     ylim=c(min(Resultados.Agrupados$SH[1:4]-3*sqrt(Resultados.Agrupados$Varianza[1:4])),
+              max(Resultados.Agrupados$SH[1:4]+3*sqrt(Resultados.Agrupados$Varianza[1:4]))))
+segments(0.1*(1:4),Resultados.Agrupados$SH[1:4]-3*sqrt(Resultados.Agrupados$Varianza[1:4]),
+         0.1*(1:4),Resultados.Agrupados$SH[1:4]+3*sqrt(Resultados.Agrupados$Varianza[1:4]),
+         col=c("green","blue","purple","red"),lwd=1.5)
+legend("topleft",col=c("green","blue","purple","red"),
+       pch=20,legend=c("T0","T1","T2C","T2HW"),cex=0.5)
+#
+plot(0.1*(1:4),Resultados.Agrupados$SH[5:8],col=c("green","blue","purple","red"),
+     pch=18,main="Grouped samples: CYM",
+     xlab="",ylab="SH",xaxt='n',          ylim=c(min(Resultados.Agrupados$SH[5:8]-3*sqrt(Resultados.Agrupados$Varianza[5:8])),max(Resultados.Agrupados$SH[5:8]+3*sqrt(Resultados.Agrupados$Varianza[5:8]))))
+segments(0.1*(1:4),Resultados.Agrupados$SH[5:8]-3*sqrt(Resultados.Agrupados$Varianza[5:8]),
+         0.1*(1:4),Resultados.Agrupados$SH[5:8]+3*sqrt(Resultados.Agrupados$Varianza[5:8]),
+         col=c("green","blue","purple","red"),lwd=1.5)
+legend("topleft",col=c("green","blue","purple","red"),
+       pch=18,legend=c("T0","T1","T2C","T2HW"),cex=0.5)
+
+```
+
+#### Enter thresholds
+
+
+```{r,eval=FALSE}
+Resultados=c()
+for (i in 1:1000){
+print(i)
+i0=i*0.00005
+llindar.0=function(x){llindar(x,i0)}
+DD=vapply(DF.0.prop, llindar.0, numeric(1))*DF.0
+DD.agrup=aggregate(DD,by=list(Tipos),FUN=sum)[,-1]
+Resultados=rbind(Resultados,
+       c(apply(DD.agrup,MARGIN=1,SH),#Shannon
+       apply(DD.agrup,MARGIN=1,sd.SH),#Variança
+       apply(DD.agrup,MARGIN=1,SH)-3*apply(DD.agrup,MARGIN=1,sd.SH), #LE de l'IC
+       apply(DD.agrup,MARGIN=1,SH)+3*apply(DD.agrup,MARGIN=1,sd.SH),#UE  de l'IC
+       
+       i0 #llindar
+       ))
+}
+
+
+Resultados=data.frame(Resultados)
+
+names(Resultados)=c(paste("SH",levels(Tipos),sep="."),
+      paste("sd",levels(Tipos),sep="."),
+      paste("LE",levels(Tipos),sep="."),
+      paste("UE",levels(Tipos),sep="."),
+      "threshold")
+
+saveRDS(Resultados, file="Resultados.Shannon.Umbrales.RData")
+```
+
+
+
+```{r,eval=FALSE}
+p.valores=c()
+for (i in 1:1000){
+print(i)
+i0=i*0.00005
+llindar.0=function(x){llindar(x,i0)}
+DD=vapply(DF.0.prop, llindar.0, numeric(1))*DF.0
+DD.agrup=aggregate(DD,by=list(Tipos),FUN=sum)[,-1]
+
+
+pvalSH.G=matrix(NA,nrow=8,ncol=8)
+for (i in 1:7){
+  for (j in (i+1):8){
+   pvalSH.G[i,j]= Hutcheson_t_test(DD.agrup[i,],DD.agrup[j,])$p.value
+  }
+}
+pvalSH.G=p.adjust(pvalSH.G,method="holm")
+
+p.valores=rbind(p.valores,
+                c(i0,
+                  pvalSH.G))
+
+}
+
+write.csv(p.valores, file="p.valores.Shannon.Umbrales.csv",row.names=FALSE)
+
+```
+
+
+The results are in the file "Resultados.Shannon.Umbrales.RData". Its variables are (for each type of sample: CAU_T0, CAU_T1 etc.):
+
+* *SH.type*: The Shannon index (SH) of the union of the three samples of that type
+
+* *sd.type*: The estimated standard deviation of the SH of the union of the three samples of that type
+    
+* *LE.type*: SH minus 3 times the estimated standard deviation
+* *UE.type*: SH plus 3 times the estimated standard deviation
+
+* *Threshold*: The corresponding threshold
+
+We show its first 10 rows (rounded, and splitted into different tables, for horizontal space reasons), corresponding to thresholds from 0.00005 to 0.0005. :
+
+```{r}
+Resultados=readRDS("Resultados.Shannon.Umbrales.RData")
+names(Resultados)=c(paste("SH",levels(Tipos),sep="."),
+      paste("sd",levels(Tipos),sep="."),
+      paste("LE",levels(Tipos),sep="."),
+      paste("UE",levels(Tipos),sep="."),
+      "Threshold")
+
+Resultados.r4=Resultados
+Resultados.r4[,1:32]=round(Resultados.r4[,1:32],4)
+
+flextable(Resultados.r4[1:10,c(33,1+8*(0:3),2+8*(0:3))])|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 0.9) 
+```
+
+```{r}
+flextable(Resultados.r4[1:10,c(33,3+8*(0:3),4+8*(0:3))])|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 0.9) 
+```
+
+```{r}
+flextable(Resultados.r4[1:10,c(33,5+8*(0:3),6+8*(0:3))])|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 0.9) 
+```
+
+```{r}
+flextable(Resultados.r4[1:10,c(33,7+8*(0:3),8+8*(0:3))])|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 0.9) 
+```
+
+
+We start by checking several thresholds: 
+
+* 0.0001: OTUs that represent more than 0.01% in their samples
+* 0.001: OTUs that represent more than 0.1% in their samples
+* 0.0025: OTUs that represent more than 0.25% in their samples
+* 0.005: OTUs that represent more than 0.5% in their samples
+* 0.0075: OTUs that represent more than 0.75% in their samples
+* 0.01: OTUs that represent more than 1% in their samples
+* 0.025: OTUs that represent more than 2.5% in their samples
+
+
+```{r}
+Dibu.global=function(p){
+  Tall=as.matrix(Resultados[Resultados$Threshold==p,])
+plot(0.1*(1:8),Tall[1,1:8],
+     col=rep(c("green","blue","purple","red"),2),
+     pch=c(rep(20,4),rep(18,4)),
+     xlab="",ylab="SH",xaxt='n',main=paste("Threshold",p,sep=" "))
+segments(x0=0.1*(1:8),y0=Tall[1,17:24],
+         x1=0.1*(1:8),y1=Tall[1,25:32],
+         col=rep(c("green","blue","purple","red"),2),lwd=1.5)
+legend("topright",col=c("black","black","green","blue","purple","red"),
+       pch=c(20,18,NA,NA,NA,NA),
+       lty=c(NA,NA,1,1,1,1),
+      legend=c("CAU","CYM","T0","T1","T2C","T2HW"),
+       seg.len=0.5,cex=0.5)
+}
+```
+
+
+```{r,fig.width=6,out.width="50%"}
+Dibu.global(0.0001)
+Dibu.global(0.001)
+Dibu.global(0.0025)
+Dibu.global(0.005)
+Dibu.global("0.0075")
+Dibu.global(0.01)
+Dibu.global(0.025)
+```
+
+As it can be seen, the longitudinal behavior of Shannon indices changes from p~0~=0.1% (which is similar to the global behaviour) to 0.25%.
+
+
+Let us see the graphics for thresholds between 0.001 and 0.005:
+
+```{r,fig.width=6,out.width="50%"}
+for (i in 0:8){
+Dibu.global(0.001+0.0005*i)
+}
+```
+
+
+
+#### How many OTUs are we talking about?
+
+For each type of samples, the next graph represents the proportion of OTUs present in **at least one** sample of this type whose relative frequency in all three samples of that type is greater than or equal to the percentage indicated on the x-axis. The proportions are also given in a table.
+
+
+```{r,fig.width=6,out.width="50%"}
+  n=seq(from=0.001,to=0.003,by=0.0005)
+  N=length(n)
+Result=n
+for (i in 1:8){
+ X1=DF.0.prop[3*(i-1)+1,]
+ X1=sort(X1[X1!=0])
+ X2=DF.0.prop[3*(i-1)+2,]
+ X2=sort(X2[X2!=0])
+ X3=DF.0.prop[3*(i-1)+3,]
+ X3=sort(X3[X3!=0])
+
+  PP=rep(0,N)
+  for(j in 1:N){PP[j]=length(X1[X1>=n[j]] & X2[X2>=n[j]] & X3[X3>=n[j]])/length(X1[X1>0] | X2[X2>0] | X3[X3>0])}
+  plot(100*n,PP,pch=20,type="l",lwd=1.5,xaxp=c(0.1,0.3,N),yaxp=c(0,0.2,20),xlab="%",ylab="Proportion of OTUs whose percentage is higher than ...",main=Tipos[i])
+  abline(v=0.01*(0:100),lwd=0.5,col="red")
+  abline(h=0.01*(0:100),lwd=0.5,col="red")
+  abline(v=0.15,lwd=1,col="blue")
+ Result=cbind(Result,round(PP,4)) 
+}
+
+Result=data.frame(Result)
+names(Result)=c("Threshold",levels(Tipos))
+row.names(Result)=NULL
+
+
+flextable(Result)|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 0.9) 
+
+```
+
+## Samples divergence analysis
+
+According to the Bray-Curtis distance (correctly applied to compositions), the CAU and CYM samples at T0 are more different than at T1, more similar at T1 than at T2C, and again more similar at T2HW than at T2C (or than at T1 or T0, for that matter). Overall, the global sets of CAU and CYM samples are more different than the starting T0 samples, as if part of the original differences were diluted. Are these differences statistically significant?
+
+Well, we have devised a method to assess the statistical significance of the differences in median distances between two pairs of samples groups, based on a resampling procedure. Using this method, we obtain that these convergences and divergences from T0 to T1, from T1 to T2C, from T2C to T2HW, and from T0 to the global sample,  are statistically significant. 
+
+
+
+```{r}
+DF.0.agrup=aggregate(DF.0,by=list(Tipos),FUN=sum)[,-1]
+```
+
+
+The next table shows, for each level T0, T1, T2C, T2HW, and Global (all samples), the median Bray-Curtis (BC) distances between the compositions of the CAU and CYM samples at those levels. 
+
+
+```{r, echo=FALSE}
+DD_T0=c()
+for (i in 1:3){
+  for (j in 13:15){
+    DD_T0=c(DD_T0,vegan::vegdist(DF.0.prop[c(i,j),], method="bray"))
+  }
+}
+MBC_T0=median(DD_T0)
+#
+DD_T1=c()
+for (i in 3+1:3){
+  for (j in 3+13:15){
+    DD_T1=c(DD_T1,vegan::vegdist(DF.0.prop[c(i,j),], method="bray"))
+  }
+}
+MBC_T1=median(DD_T1)
+#
+DD_T2C=c()
+for (i in 6+1:3){
+  for (j in 6+13:15){
+    DD_T2C=c(DD_T2C,vegan::vegdist(DF.0.prop[c(i,j),], method="bray"))
+  }
+}
+MBC_T2C=median(DD_T2C)
+#
+DD_T2HW=c()
+for (i in 9+1:3){
+  for (j in 9+13:15){
+    DD_T2HW=c(DD_T2HW,vegan::vegdist(DF.0.prop[c(i,j),], method="bray"))
+  }
+}
+MBC_T2HW=median(DD_T2HW)
+#
+DD_Global=c()
+for (i in 1:12){
+  for (j in 13:24){
+    DD_Global=c(DD_Global, vegan::vegdist(DF.0.prop[c(i,j),], method="bray"))
+  }
+}
+MBC_Global=median(DD_Global)
+
+
+Seps=data.frame(c("T0","T1","T2C","T2HW","Global"),
+                round(c(MBC_T0,MBC_T1,MBC_T2C,MBC_T2HW,MBC_Global),4))
+names(Seps)=c("Times","Average BC-dist.")
+
+flextable( Seps)|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 1.5) 
+```
+
+
+
+The BC-distances decrease from T0 to T1. Then, from T1 to T2C they increase, while from T1 to T2HW they decrease further. Also, from T0 to Global it decreases. Are  these "convergences" and "divergences" of samples statistically significant?
+
+We want to perform a contrast with null hypothesis "The  CAU_T1 and CYM_T1 samples are as similar as the CAU_T0 and CYM_T0 samples"  and alternative hypothesis "The  CAU_T1 and CYM_T1 samples are more similar  than the CAU_T0 and CYM_T0 samples".
+
+To solve this contrast, we resort to a resampling process. The **broad** idea is:
+
+* On the one hand, we merge all 3 samples CAU_T0 in a single sample, and all 3 samples CYM_T0 in another single sample, and we repeat 1000 times the following:
+
+    * We split the CAU merged sample into 3 disjoint random samples of the sizes of the original CAU_T0_1, CAU_T0_2, CAU_T0_3 samples forming it
+    * We split the CYM merged sample into 3 disjoint random samples of the sizes of the original CYM_T0_1, CYM_T0_2, CYM_T0_3 samples forming it
+    * We compute the median distance between the 3 CAU random samples and the 3 CYM random samples
+    
+    In this way, we obtain a vector of 1000 median distances between CAU and CYM for T0
+
+* On the other hand, we merge all 6 samples CAU_T0 and CAU_T1 in a single sample, and all 6 samples CYM_T0 and CYM_T1 in another single sample, and we repeat 1000 times the following:
+
+    * We take from the CAU merged sample 3 disjoint random samples (without reposition) of the sizes of the original CAU_T0_1, CAU_T0_2, CAU_T0_3 samples 
+    * We take from the CYM merged sample into 3 disjoint random samples (without reposition) of the sizes of the original CYM_T0_1, CYM_T0_2, CYM_T0_3 samples 
+    * We compute the median distance between the 3 CAU random samples and the 3 CYM random samples
+
+    In this way, we obtain a vector of 1000 median distances  between CAU and CYM for the union of T0 and T1
+    
+  
+The idea is that if the T1 samples are "as similar" as the T0 samples, the median distances between triples of disjoint random samples from the merged T0 samples should be similar to the median distances between triples of disjoint random samples (of the same sizes) from the merged T0+T1 samples. Conversely, if  the T1 samples are "more similar" than the T0 samples, the median distances between triples of random samples from the merged T0 samples should tend to be larger than the median distances between triples of random samples (of the same sizes) from the merged T0+T1 samples. 
+
+So, we can use as p-value the proportion of pairs (median distance between CAU and CYM for T0, median distance between CAU and CYM for T0+T1) where the first entry is *smaller* than the second entry. If  the T1 samples are "as similar" as the T0 samples, we would expect this to happen half of times, while if the T0 samples are more different than the T1 samples, we would expect this to happen with low frequency.
+ 
+The problem is that the CYM samples are  larger than CAU samples, and it can bias the samples; for instance if we merge CAU_T1 and CYM_T1 samples and take random samples, most of the taxa will come from CYM:
+
+```{r,echo=FALSE}
+Sizes.DF=data.frame(Samples[c(1:6,13:18)],Sizes[c(1:6,13:18)])
+names(Sizes.DF)=c("Samples","Sizes")
+flextable(Sizes.DF)|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 1.5) 
+```
+
+To solve this drawback, and since we apply BC-distances to proportions, *we  reescale all samples to size 10^6^ (up to rounding; we need integer frequencies for the simulations) before merging*.
+
+```{r}
+DF=round(DF.0.prop*10^6)
+DF.prop=DF/rowSums(DF)
+DF.agrup=aggregate(DF,by=list(Tipos),FUN=sum)[,-1]
+Sizes=rowSums(DF)
+```
+
+The new sample sizes are
+
+```{r,echo=FALSE}
+Sizes.DF=data.frame(Samples[c(1:6,13:18)],Sizes[c(1:6,13:18)])
+names(Sizes.DF)=c("Samples","Sizes")
+flextable(Sizes.DF)|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 1.5) 
+```
+  
+Let us check first that with these reescaled samples (where, due to rounding, the proportions are not exactly the original ones but very close to them), the behaviour of the distances is the same as the original one:
+
+
+
+```{r, echo=FALSE}
+DD_T0.R=c()
+for (i in 1:3){
+  for (j in 13:15){
+    DD_T0.R=c(DD_T0.R,
+                        vegan::vegdist(DF.prop[c(i,j),], method="bray"))
+  }
+}
+MBC_T0.R=median(DD_T0.R)
+#
+DD_T1.R=c()
+for (i in 3+1:3){
+  for (j in 3+13:15){
+    DD_T1.R=c(DD_T1.R,
+                        vegan::vegdist(DF.prop[c(i,j),], method="bray"))
+  }
+}
+MBC_T1.R=median(DD_T1.R)
+#
+DD_T2C.R=c()
+for (i in 6+1:3){
+  for (j in 6+13:15){
+    DD_T2C.R=c(DD_T2C.R,
+                        vegan::vegdist(DF.prop[c(i,j),], method="bray"))
+  }
+}
+MBC_T2C.R=median(DD_T2C.R)
+#
+DD_T2HW.R=c()
+for (i in 9+1:3){
+  for (j in 9+13:15){
+    DD_T2HW.R=c(DD_T2HW.R,
+                        vegan::vegdist(DF.prop[c(i,j),], method="bray"))
+  }
+}
+MBC_T2HW.R=median(DD_T2HW.R)
+#
+DD_Global.R=c()
+for (i in 1:12){
+  for (j in 13:24){
+    DD_Global.R=c(DD_Global.R,
+                        vegan::vegdist(DF.prop[c(i,j),], method="bray"))
+  }
+}
+MBC_Global.R=median(DD_Global.R)
+
+
+Seps.R=data.frame(c("T0","T1","T2C","T2HW","Global"),
+                round(c(MBC_T0.R,MBC_T1.R,MBC_T2C.R,MBC_T2HW.R,MBC_Global.R),4))
+names(Seps.R)=c("Times","Average BC-dist.")
+
+flextable(Seps.R)|>
+   fontsize(size = 8, part = "all")|>
+ width(width = 1.5) 
+```
+    
+No change.    
+    
+    
+We shall use the following  function:   
+
+* Function Simulation
+    * takes the different samples CAU y CYM at the specified times, for instance, CAU_T0, CAU_T1, CYM_T0 and CYM_T1, or simply CAU_T0 and CYM_T0
+    * considers as "base" samples the samples CAU and CYM at the first of each set of times, for instance CAU_T0 and CYM_T0
+    * merges all samples CAU in one sample, and all samples CYM in another sample
+    *  it extracts, from the CAU merged sample, 3 disjoint random samples (without reposition) of the same sizes as the reescaled CAU base samples, and from the CYM merged sample, 3 disjoint random samples of the same sizes as the reescaled CYM base samples
+    * it computes the median specified distance between the 3 CAU random samples and the 3 CYM random samples
+
+
+
+```{r}
+#' II indexes of the CAU grouped samples
+#' The first one is the "base" time
+#' Example: CAU T0+T1 and CYM T0+T1 vs CAU T0 and CYM T0
+#' II=c(1,2)
+#' Example: CAU_T0 vs CYM_T0
+#' II=c(1)
+Simulation=function(II,distancia){
+#CAU
+XX1=c()
+for (i in 1:length(II)){
+  XX1=c(XX1,rep(OTUs,DF.agrup[II[i],]))
+}
+XX1=factor(XX1,levels=OTUs)
+ind1=1:length(XX1)
+#CYM
+XX2=c()
+for (i in 1:length(II)){
+  XX2=c(XX2,rep(OTUs,DF.agrup[4+II[i],]))
+}
+XX2=factor(XX2,levels=OTUs)
+ind2=1:length(XX2)
+
+# sizes of base samples
+SS=Sizes[c(3*(II[1]-1)+1:3,3*((4+II[1])-1)+1:3)]
+
+
+ind1.1=sample(ind1,SS[1],replace=FALSE)
+ind1.2=sample(ind1[-ind1.1],SS[2],replace=FALSE)
+ind1.3=sample(ind1[-c(ind1.1,ind1.2)],SS[3],replace=FALSE)
+
+ind2.1=sample(ind2,SS[4],replace=FALSE)
+ind2.2=sample(ind2[-ind2.1],SS[5],replace=FALSE)
+ind2.3=sample(ind2[-c(ind2.1,ind1.2)],SS[6],replace=FALSE)
+
+Y1.1=prop.table(table(factor(XX1[ind1.1],levels=OTUs)))
+Y1.2=prop.table(table(factor(XX1[ind1.2],levels=OTUs)))
+Y1.3=prop.table(table(factor(XX1[ind1.3],levels=OTUs)))
+Y2.1=prop.table(table(factor(XX2[ind2.1],levels=OTUs)))
+Y2.2=prop.table(table(factor(XX2[ind2.2],levels=OTUs)))
+Y2.3=prop.table(table(factor(XX2[ind2.3],levels=OTUs)))
+
+YY=rbind(Y1.1,Y1.2,Y1.3,Y2.1,Y2.2,Y2.3)
+
+BC=c()
+for (i in 1:3){
+  for (j in 4:6){
+    BC=c(BC,vegan::vegdist(YY[c(i,j),], method=distancia))
+  }
+}
+median(BC)
+}
+```
+
+
+
+
+
+For reproducibility, we fix a random seed
+
+```{r}
+#initial_seed=as.integer(Sys.time())
+#print(initial_seed)
+## [1] 1725986963
+#initial_seed%%10000
+## [1] 6963
+
+set.seed(6963)
+```
+
+Let us perform the desired contrast for T0 vs T1 and the BC-distance
+
+
+```{r,eval=FALSE}
+Sim.T0T1.T0.BC=replicate(1000,Simulation(c(1,2),"bray"))
+Sim.T0.BC=replicate(1000,Simulation(c(1),"bray"))
+
+saveRDS(Sim.T0T1.T0.BC, file="Sim.T0T1.T0.BC.RData")
+saveRDS(Sim.T0.BC, file="Sim.T0.BC.RData")
+```
+
+```{r,echo=FALSE}
+Sim.T0T1.T0.BC=readRDS("Sim.T0T1.T0.BC.RData")
+Sim.T0.BC=readRDS("Sim.T0.BC.RData")
+```
+
+The median BC-distances for the  random T0+T1 samples go from `r round(range(Sim.T0T1.T0.BC)[1],4)` to `r round(range(Sim.T0T1.T0.BC)[2],4)`, while the median BC-distances for the T0 samples go from `r round(range(Sim.T0.BC)[1],4)` to `r round(range(Sim.T0.BC)[2],4)`. So, **all** median BC-distances for T0 are larger than **any** median distance for T0+T1. Moreover, recall that the median BC-distance between the (reescaled) CAU_T0 and  CYM_T0 samples was `r round(MBC_T0.R,4)`, larger than the largest median BC-distance for the  random T0+T1 samples.
+
+
+For robustness, let us perform the contrast with T1 as base samples
+
+
+```{r,eval=FALSE}
+Sim.T0T1.T1.BC=replicate(1000,Simulation(c(2,1),"bray"))
+Sim.T1.BC=replicate(1000,Simulation(c(2),"bray"))
+
+saveRDS(Sim.T0T1.T1.BC, file="Sim.T0T1.T1.BC.RData")
+saveRDS(Sim.T1.BC, file="Sim.T1.BC.RData")
+```
+
+```{r,echo=FALSE}
+Sim.T0T1.T1.BC=readRDS("Sim.T0T1.T1.BC.RData")
+Sim.T1.BC=readRDS("Sim.T1.BC.RData")
+```
+
+In this case, the  median BC-distances for the T0+T1 samples go from `r round(range(Sim.T0T1.T1.BC)[1],4)` to `r round(range(Sim.T0T1.T1.BC)[2],4)`, while the median BC-distances for the T1 samples go from `r round(range(Sim.T1.BC)[1],4)` to `r round(range(Sim.T1.BC)[2],4)`.  The median BC-distance between the (reescaled) CAU_T1 and  CYM_T1 samples was `r round(MBC_T1.R,4)`.
+
+Now T1 vs T2C, taking T1 as base samples (for the sake of completeness, we repeat the simulation for T1).
+
+```{r,eval=FALSE}
+Sim.T1T2C.T1.BC=replicate(1000,Simulation(c(2,3),"bray"))
+Sim.T1.BC.2=replicate(1000,Simulation(c(2),"bray"))
+
+saveRDS(Sim.T1T2C.T1.BC, file="Sim.T1T2C.T1.BC.RData")
+saveRDS(Sim.T1.BC.2, file="Sim.T1.BC.2.RData")
+```
+
+```{r,echo=FALSE}
+Sim.T1T2C.T1.BC=readRDS("Sim.T1T2C.T1.BC.RData")
+Sim.T1.BC.2=readRDS("Sim.T1.BC.2.RData")
+```
+
+The  median BC-distances for the T1+T2C samples go from `r round(range(Sim.T1T2C.T1.BC)[1],4)` to `r round(range(Sim.T1T2C.T1.BC)[2],4)`, while the median BC-distances for the T1 samples go from `r round(range(Sim.T1.BC.2)[1],4)` to `r round(range(Sim.T1.BC.2)[2],4)`. The median BC-distance between the (reescaled) CAU_T1 and  CYM_T1 samples was `r round(MBC_T1.R,4)`.
+
+
+And T2C vs T2HW, with T2C as base samples.
+
+```{r,eval=FALSE}
+Sim.T2CT2HW.T2C.BC=replicate(1000,Simulation(c(3,4),"bray"))
+Sim.T2C.BC=replicate(1000,Simulation(c(3),"bray"))
+
+saveRDS(Sim.T2CT2HW.T2C.BC,file="Sim.T2CT2HW.T2C.BC.RData")
+saveRDS(Sim.T2C.BC, file="Sim.T2C.BC.RData")
+```
+
+```{r,echo=FALSE}
+Sim.T2CT2HW.T2C.BC=readRDS("Sim.T2CT2HW.T2C.BC.RData")
+Sim.T2C.BC=readRDS("Sim.T2C.BC.RData")
+```
+
+The  median BC-distances for the T2C+T2HW samples go from `r round(range(Sim.T2CT2HW.T2C.BC)[1],4)` to `r round(range(Sim.T2CT2HW.T2C.BC)[2],4)`, while the median BC-distances for the T2C samples go from `r round(range(Sim.T2C.BC)[1],4)` to `r round(range(Sim.T2C.BC)[2],4)`. The median BC-distance between the (reescaled) CAU_T2C and  CYM_T2C samples was `r round(MBC_T2C.R,4)`
+
+Finally, the global samples:
+
+
+```{r,eval=FALSE}
+Sim.Global.BC=replicate(1000,Simulation(c(1,2,3,4),"bray"))
+Sim.T0.BC=replicate(1000,Simulation(c(1),"bray"))
+
+saveRDS(Sim.Global.BC, file="Sim.Global.BC.RData")
+saveRDS(Sim.T0.BC, file="Sim.T0.BC.RData")
+```
+
+```{r,echo=FALSE}
+Sim.Global.BC=readRDS("Sim.Global.BC.RData")
+Sim.T0.BC=readRDS("Sim.T0.BC.RData")
+```
+
+The  median BC-distances bewteen CAU and CYM for the Global samples go from `r round(range(Sim.Global.BC)[1],4)` to `r round(range(Sim.Global.BC)[2],4)`, while the median BC-distances for the T0 samples go from `r round(range(Sim.T0.BC)[1],4)` to `r round(range(Sim.T0.BC)[2],4)`. The median BC-distance between the (reescaled) CAU_T0 and  CYM_T0 samples was `r round(MBC_T0.R,4)`
+
+
+## Differential abundance analysis
+
+For each pair of sample types considered, we proceed as follows:  
+
+1. We load *TablaOTUs.xlsx* and retain only the relevant "global" samples (all, only CAU, or only CYM).  
+2. We remove OTUs with 2 or fewer reads across the selected samples.  
+3. We remove OTUs that appear in only one of the selected samples, in order to apply Bayesian-multiplicative zero imputation.  
+4. We perform Bayesian-multiplicative zero imputation on the selected samples.
+5. We retain only the samples corresponding to the time points to be compared. 
+6. We assess whether and how well the two types of samples are clearly separated in a hierarchical clustering.  
+7. We study how well the two types of samples separate when only a random group of OTUs of fixed size is considered, for different sizes. This provides a reference against which we evaluate the significance of the separation observed with specific groups of OTUs.  
+
+   To evaluate how a group of taxa separates two groups of samples CAU~x~ and CYM~x~, we use the index  
+   $$
+   \frac{\text{distance between CAU${}_x$ and CYM${}_x$}}{\sqrt{(\text{dist. within CAU${}_x$})^2 + (\text{dist. within CYM${}_x$})^2}}
+   $$  
+   where the distances are calculated as the heights in the hierarchical tree obtained by clustering the samples with the selected taxa.  
+
+   In each one of these simulations, we fix the random seed as the last four digits of `Sys.time()` at the moment of execution.  
+
+8. We search for groups of OTUs with significantly different abundances in the two sample types by applying several methods: significance according to ALDeX (adjusted p-values from the Kruskal–Wallis test); relevant log-ratios; bacterial signatures identified with `coda_glmnet`; and significance according to simper.  
+9. When the different methods identify groups of OTUs that consistently separate the two sample types, we record them in a table `Significant`, and finally we export this table as a csv file. Its name is "OTU_Significativos_" followed by the pair of sample types.  
+
+
+### CAU vs CYM 
+
+```{r}
+tax_otu=data.frame(read_excel("TablaOTUs.xlsx"))
+Samples=tax_otu$ID 
+n.OTUs.original=dim(tax_otu)[2]-2
+taxa=colnames(tax_otu[,3:dim(tax_otu)[2]])
+DF.0=tax_otu[,-c(1,2)]
+taxa.original=taxa
+OTUs=paste("OTU",1:n.OTUs.original,sep="")
+colnames(DF.0)=OTUs
+DF.0.total=DF.0
+colnames(DF.0.total)=OTUs
+rownames(DF.0.total)=Samples
+rm(tax_otu)
+
+Type=as.factor(rep(c("CAU","CYM"),each=12))
+colors=c("green","blue")[Type]
+#' Green: CAU  
+#' Blue: CYM  
+```
+
+
+The OTUs that appear with 2 or fewer hits in the total sample represent `r round(100*length(which(colSums(DF.0)<=2))/dim(DF.0)[2],1)`% of the total.  
+
+```{r}
+Miseria=as.vector(which(colSums(DF.0)<=2))
+DF.0=DF.0[,-Miseria]
+taxa=taxa[-Miseria]
+OTUs=OTUs[-Miseria]
+```
+
+
+```{r}
+# DF.0.hits: para cada OTU y cada muestra, 1 si OTU in Muestra y 0 si no
+hit=function(x){min(c(x,1))}
+DF.0.hits=as.matrix(DF.0)
+DF.0.hits[]=vapply(DF.0.hits, hit, numeric(1))
+```
+
+OTUs that appear in only one sample but represent more than 0.05% of that sample:  
+
+
+```{r}
+Unics=data.frame(
+Sample=rep(NA,length(which(colSums(DF.0.hits)==1))), OTUs=names(colSums(DF.0)[which(colSums(DF.0.hits)==1)]), Reads=colSums(DF.0)[which(colSums(DF.0.hits)==1)],
+            Proportions=rep(0,length(which(colSums(DF.0.hits)==1)))  
+)
+for (i in 1:length(Unics$OTUs)){
+ii=which(DF.0.hits[,Unics$OTUs[i]]==1)  
+Unics$Proportions[i]=DF.0[ii,Unics$OTUs[i]]/sum(DF.0[ii,])
+Unics$Sample[i]=Samples[ii]}
+Unics.Freqs=Unics[Unics$Proportions>=0.05/100,]
+row.names(Unics.Freqs)=NULL
+
+
+Unics.Freqs[rev(order(Unics.Freqs$Proportions)),] %>%
+  kbl() %>%
+  kable_styling()
+```
+
+We remove the OTUs that appear in only one samples and we perform Bayesian-multiplicative zero imputation.
+
+
+```{r}
+DF.0=DF.0[,-which(colSums(DF.0.hits)==1)]
+taxa=taxa[-which(colSums(DF.0.hits)==1)]
+OTUs=OTUs[-which(colSums(DF.0.hits)==1)]
+row.names(DF.0)=Samples
+DF=zCompositions::cmultRepl(DF.0,method="GBM",output="p-counts",suppress.print=TRUE,z.warning=0.99)
+row.names(DF)=Samples
+
+rm(DF.0.hits)
+rm(Miseria)
+```
+
+From `r n.OTUs.original` initial taxa, we have reduced to `r length(taxa)`.  
+
+#### How different are the samples?  
+
+
+
+```{r}
+HC=ClusterHC(DF,Grups=Type,barplot=FALSE,colores=colors)
+separacio.global=Sep(HC)
+```
+
+The two sample types are perfectly separated from the start. The separation between groups is `r round(Sep(HC),2)`.  
+
+We observe below that the two sample types are so different that almost any subset of OTUs of reasonable size classifies them correctly. This will serve as a reference to compare how much improvement we gain with the "good" sets identified later.  
+
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1711395644
+initial_seed %% 10000
+# [1] 5644
+```
+
+
+```{r,eval=FALSE}
+set.seed(5644)
+Experimento=function(i)
+{
+  ii=sample(dim(DF)[2],i,rep=FALSE)
+  DFtemp=DF[,ii]
+  CC=ClusterHC(DFtemp,dendrograma=FALSE,barplot=FALSE, Grups=Type,colores=colors)
+  c(Encerts(CC$tabla,table(Type)),Sep(CC))
+}
+n=250
+F.SS=c()
+for (i in 10:round((dim(DF)[2])/2))
+  {
+  print(i)
+  EE=replicate(n,Experimento(i))
+  EE.2=EE[2,which(EE[1,]==0)]
+XX=replicate(1000,mean(sample(EE.2,n,replace=TRUE)))
+  F.SS=rbind(F.SS, c(i,
+                     length(EE.2)/250,
+                      mean(EE.2),
+                      quantile(XX,0.025),
+                      quantile(XX,0.975)
+  ))
+  }
+colnames(F.SS)=c("n","Proportion","Avg. sep.","Q_0.025","Q_0.975")
+saveRDS(F.SS, file="Fraccio.Separadors.CAUvsCYM.RData")
+```
+
+```{r}
+F.SS=readRDS("Fraccio.Separadors.CAUvsCYM.RData")
+```
+
+The first plot shows, for each $n$ up to half the total number of OTUs, the proportion of samples of size $n$ that perfectly classify CAU and CYM (black curve), along with the 95% Clopper–Pearson confidence interval for that proportion (red curves). We have used *smoothing splines* to smooth the curves.  
+
+```{r}
+F.SS_prop.Q_0.025=epitools::binom.exact(F.SS[,2]*250,250)$lower
+F.SS_prop.Q_0.975=epitools::binom.exact(F.SS[,2]*250,250)$upper
+fit = smooth.spline(F.SS[,1],F.SS[,2],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS_prop.Q_0.025,cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS_prop.Q_0.975,cv=TRUE)
+
+
+plot(F.SS[,1:2],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Proportion",main="Proportion of perfect classifiers",xlim=c(0,1250),xaxp=c(0,1250,25),yaxp=c(0,1,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+```
+
+The second plot shows, for each $n$ up to half the total number of OTUs, the estimated mean separation obtained with a sample of size $n$ that perfectly classifies CAU and CYM (black curve), along with the 95% confidence interval of this mean separation obtained via bootstrap (red curve). This plot will serve as a reference later.  
+
+
+
+```{r}
+fit = smooth.spline(F.SS[,1],F.SS[,3],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS[,4],cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS[,5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xlim=c(0,1250),xaxp=c(0,1250,25),yaxp=c(0,2.5,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+abline(h=separacio.global,col="green")
+```
+  `
+
+#### OTUs significant according to ALDeX
+
+We always use the `aldexCesc.clr` version of the `aldex.clr` function (from the script **funcionsCODAMETACIRCLE.R**) to generate the simulated samples.  
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1711411362
+initial_seed %% 10000
+# [1] 1362
+```
+
+
+```{r,eval=FALSE}
+set.seed(1362)
+repl.kw.Cescv2.CaCy=aldexCesc.clr(t(DF), conds=Type, mc.samples=1000, verbose=FALSE)
+aldex.kw.Cescv2.CaCy=aldex.kw(repl.kw.Cescv2.CaCy, verbose=FALSE)
+#'
+saveRDS(aldex.kw.Cescv2.CaCy, file="aldex_kw_Cescv2_CaCy.RData")
+```
+
+
+```{r}
+p.valores_kw=readRDS("aldex_kw_Cescv2_CaCy.RData") 
+```
+
+
+**Adjusted Kruskal–Wallis p-value < 0.05**  
+
+
+
+```{r}
+sep.kw.005=QQ.HC.noadjust(p.valores_kw,DF,Type,q=0.05,1)
+kw.005=which(p.valores_kw[,2]<0.05) 
+```
+
+There are `r sep.kw.005[1]` taxa with adjusted Kruskal–Wallis p-value < 0.05.  
+The separation between groups is `r round(sep.kw.005[2],2)`.  
+
+**Adjusted Kruskal–Wallis p-value < 0.01**  
+
+```{r}
+sep.kw.001=QQ.HC.noadjust(p.valores_kw,DF,Type,q=0.01,1)
+kw.001=which(p.valores_kw[,2]<0.01) 
+```
+
+There are `r sep.kw.001[1]` taxa with adjusted Kruskal–Wallis p-value < 0.01.  
+The separation between groups is `r round(sep.kw.001[2],2)`.  
+
+**Adjusted Kruskal–Wallis p-value  < 0.001**
+
+
+
+```{r}
+sep.kw.0001=QQ.HC.noadjust(p.valores_kw,DF,Type,q=0.001,1)
+kw.0001=which(p.valores_kw[,2]<0.001) 
+```
+
+There are `r sep.kw.0001[1]` taxa with adjusted Kruskal–Wallis p-value < 0.001.  
+The separation between groups is `r round(sep.kw.0001[2],2)`.  
+
+```{r}
+Indicador=function(x,k=n.OTUs.original){
+  xx=rep(0,k)
+  y=as.numeric(gsub("\\D+", "", OTUs[x]))
+  xx[y]=1
+  
+  return(xx)
+}
+```
+
+
+
+```{r}
+Significant=data.frame(
+  OTUs=paste("OTU",1:n.OTUs.original,sep=""),
+  taxa=taxa.original,
+  Aldex.kw.0.05=Indicador(kw.005),
+  Aldex.kw.0.01=Indicador(kw.001),
+  Aldex.kw.0.001=Indicador(kw.0001)
+  )
+```
+
+
+
+
+#### Taxa with maximum relevant log-ratios  
+
+We plot the assoc~k~ values (see the main text) and obtain its maximum.
+
+```{r,eval=FALSE}
+LRS=explore_logratios(DF,Type)
+saveRDS(LRS, file="LRS_CAUCYM.RData")
+```
+
+```{r}
+LRS=readRDS("LRS_CAUCYM.RData")
+```
+
+
+```{r,eval=FALSE}
+assoc=rep(0,dim(DF)[2]-4)
+for (m in 5:dim(DF)[2]){
+    assoc[m-4]=sum(LRS$`association log-ratio with y`[1:m,1:m])/m^2
+}
+saveRDS(assoc, file="assoc_CAUCYM.RData")
+```
+
+
+```{r}
+assoc=readRDS("assoc_CAUCYM.RData")
+plot(5:dim(DF)[2],assoc,type="b",xlab="m",ylab="Average goodness of the m most logratio-relevant taxa."
+     ,pch=20,cex=0.5)
+```
+
+
+```{r}
+m=4+which.max(assoc)
+impLR=sort(as.numeric(LRS$`order of importance`[1:m]))
+DF.Imp=DF[,impLR]
+HC=ClusterHC(DF.Imp,dendrograma=FALSE,barplot=FALSE, Grups=Type)
+LR.max=c(length(impLR),Sep(HC))
+```
+
+
+The maximum is attained at the set of `r LR.max[1]` most logratio-relevant taxa.  
+ They perfectly separate the two sample types. The separation between groups is `r round(LR.max[2],2)`.  
+
+
+
+
+```{r}
+Significant=cbind(Significant,
+                     Log_ratio.max=Indicador(impLR))
+```
+
+
+
+#### Taxa relevant for the bacterial signature (according to `coda_glmnet`)  
+
+We always apply the `coda_glmnet` function to the frequency matrix with zeros already imputed.
+
+
+```{r,eval=FALSE}
+coda.glmnet=coda_glmnet(DF,Type,showPlots = FALSE)
+saveRDS(coda.glmnet, file="coda.glmnet.CAUCYM.RData")
+```
+
+
+```{r}
+coda.glmnet=readRDS("coda.glmnet.CAUCYM.RData")
+coda.glmnet$`signature plot`
+```
+
+```{r}
+impGLMNET=coda.glmnet$taxa.num
+DF.Imp=DF[,impGLMNET]
+HC=ClusterHC(DF.Imp,dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+SB.glmnet=c(length(coda.glmnet$taxa.num),Sep(HC))
+```
+
+
+There are `r SB.glmnet[1]` significant taxa.  
+The separation between groups is `r round(SB.glmnet[2],2)`.  
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.CAU=Indicador(coda.glmnet$taxa.num[coda.glmnet$`log-contrast coefficients`>0]),
+glmnet_sign.CYM=Indicador(coda.glmnet$taxa.num[coda.glmnet$`log-contrast coefficients`<0]))
+```
+
+
+
+### Simper 
+
+We always use `simper` from `vegan` on the (original) proportion matrix.  
+
+```{r}
+DF.prop=DF.0.total/rowSums(DF.0.total)
+SMP.prop=simper(DF.prop,group=Type)
+```
+
+
+```{r}
+indexos_SMP.rel.prop=SMP.prop$CAU_CYM$ord[which(SMP.prop$CAU_CYM$cusum<=0.7)]
+OTUs.simper.rel.prop=sort(attr(SMP.prop$CAU_CYM$cusum[which(SMP.prop$CAU_CYM$cusum<=0.7)],"names"))
+
+DF.Imp=DF[,OTUs.simper.rel.prop]
+HC=ClusterHC(DF.Imp,dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+simper.rel.props=c(length(indexos_SMP.rel.prop),Sep(HC))
+```
+
+There are `r simper.rel.props[1]` significant taxa.  They perfectly separate the two sample types. The separation between groups is `r round(simper.rel.props[2],2)`.  
+
+
+
+```{r}
+Indicador.Gl=function(x,k=n.OTUs.original){
+  xx=rep(0,k)
+ xx[x]=1
+  return(xx)
+}
+
+Significant=cbind(Significant,
+simper.props=Indicador.Gl(indexos_SMP.rel.prop))
+```
+
+
+
+```{r}
+Significant=cbind(Significant,
+t(DF.prop))
+```
+
+
+#### Summary
+
+
+```{r}
+write.csv2(Significant,"OTU_Significativos_CAUvsCYM_def.csv",row.names=FALSE)
+```
+
+```{r}
+Resultados=rbind(
+sep.kw.0001,sep.kw.005,sep.kw.001,
+LR.max,SB.glmnet,
+simper.rel.props
+)
+row.names(Resultados)=c("Aldex.0.001","Aldex.0.05","Aldex.0.01",
+"LR","glmnet", "simper")
+colnames(Resultados)=c("Size","Separation")
+```
+  
+```{r,fig.width=10, out.width="50%"} 
+par(opar)
+fit = smooth.spline(F.SS[,1],F.SS[,3],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS[,4],cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS[,5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xaxp=c(0,1000,40),yaxp=c(0,8.5,17),ylim=c(0,8.5),xlim=c(0,1000))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+points(Resultados,col="blue",type="h")
+points(Resultados,col="blue",pch=20)
+text(Resultados[,1],Resultados[,2]+0.1,col="blue",labels=row.names(Resultados),cex=0.75)
+abline(h=2.47,col="green")
+text(20,2.6,col="green",labels="Global",cex=0.75)
+```
+
+
+Finally, we intersect the OTUs identified as significant according to LR and `coda_glmnet`.  
+
+```{r}
+Significant.capat=Significant[,c(1,2,6,7,8)]
+Significant.capat=cbind(Significant.capat,Cuánto=rowSums(Significant.capat[,3:dim(Significant.capat)[2]]))
+Significant.capat=Significant.capat[Significant.capat$Cuánto==2,]
+```
+
+There are `r dim(Significant.capat)[1]` such taxa. They are  
+
+```{r}
+Significant.capat[,1:2]%>%
+  kbl() %>%
+  kable_styling()
+```
+
+
+
+```{r}
+DF.Imp=DF[,Significant.capat[,1]]
+HC=ClusterHC(DF.Imp,dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+```
+
+The separation between groups is `r round(Sep(HC),2)`.  
+
+We update the plot with the separations:  
+```{r}
+intersección=c(dim(Significant.capat)[1],Sep(HC))
+Resultados=rbind(Resultados,intersección)
+row.names(Resultados)=c("Aldex.0.001","Aldex.0.05","Aldex.0.01",
+"LR","glmnet", "simper","intersection")
+colnames(Resultados)=c("Size","Separation")
+
+```
+  
+```{r,fig.width=10, out.width="50%"} 
+par(opar)
+fit = smooth.spline(F.SS[,1],F.SS[,3],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS[,4],cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS[,5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xaxp=c(0,1000,40),yaxp=c(0,8.5,17),ylim=c(0,8.5),xlim=c(0,1000))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+points(Resultados,col="blue",type="h")
+points(Resultados,col="blue",pch=20)
+text(Resultados[,1],Resultados[,2]+0.1,col="blue",labels=row.names(Resultados),cex=0.75)
+abline(h=2.47,col="green")
+text(20,2.6,col="green",labels="Global",cex=0.75)
+```
+
+
+```{r}
+Resultados %>%
+  kbl() %>%
+  kable_styling()
+```
+
+### CAU T0 vs CYM T0
+
+
+```{r}
+tax_otu=data.frame(read_excel("TablaOTUs.xlsx"))
+Samples=tax_otu$ID 
+taxa=colnames(tax_otu[,3:dim(tax_otu)[2]])
+OTUs=paste("OTU",1:(dim(tax_otu)[2]-2),sep="")
+
+
+DF.0=tax_otu[c(1:3,13:15),-c(1,2)]
+row.names(DF.0)=Samples[c(1:3,13:15)]
+colnames(DF.0)=OTUs
+
+taxa.original=taxa
+DF.0.original=DF.0
+n.OTUs.original=dim(DF.0)[2]
+
+Miseria=as.vector(which(colSums(DF.0)<=2))
+DF.0=DF.0[,-Miseria]
+taxa=taxa[-Miseria]
+OTUs=OTUs[-Miseria]
+
+hit=function(x){min(c(x,1))}
+DF.0.hits=as.matrix(DF.0)
+DF.0.hits[]=vapply(DF.0.hits, hit, numeric(1))
+
+Unics=data.frame(
+Sample=rep(NA,length(which(colSums(DF.0.hits)==1))), OTUs=names(colSums(DF.0)[which(colSums(DF.0.hits)==1)]), Reads=colSums(DF.0)[which(colSums(DF.0.hits)==1)],
+            Proportions=rep(0,length(which(colSums(DF.0.hits)==1)))  
+)
+for (i in 1:length(Unics$OTUs)){
+ii=which(DF.0.hits[,Unics$OTUs[i]]==1)  
+Unics$Proportions[i]=DF.0[ii,Unics$OTUs[i]]/sum(DF.0[ii,])
+Unics$Sample[i]=Samples[ii]}
+Unics.Freqs=Unics[Unics$Proportions>=0.05/100,]
+row.names(Unics.Freqs)=NULL
+
+
+DF.0=DF.0[,-which(colSums(DF.0.hits)==1)]
+taxa=taxa[-which(colSums(DF.0.hits)==1)]
+OTUs=OTUs[-which(colSums(DF.0.hits)==1)]
+
+row.names(DF.0)=Samples[c(1:3,13:15)]
+
+DF=zCompositions::cmultRepl(DF.0,method="GBM",output="p-counts",suppress.print=TRUE,z.warning=0.99)
+row.names(DF)=Samples[c(1:3,13:15)]
+
+
+Type=as.factor(c(rep("CAU_T0", 3),rep("CYM_T0", 3)))
+colors=c("green","blue")[Type]
+```
+
+
+
+After removing OTUs with 2 or fewer reads across the T0 samples and those appearing in only one of these samples, `r length(taxa)` taxa remain.  
+
+The OTUs removed at this step that represent more than 0.05% of the sample in which they appear are:  
+
+```{r}
+Unics.Freqs[rev(order(Unics.Freqs$Proportions)),] %>%
+  kbl() %>%
+  kable_styling()
+```
+
+
+```{r}
+rm(tax_otu)
+rm(DF.0.hits)
+rm(Miseria)
+rm(Unics.Freqs)
+```
+
+
+#### How different are the samples?  
+
+
+```{r}
+HC=ClusterHC(DF,Grups=Type,barplot=FALSE,colores=colors)
+separacio.global=Sep(HC)
+```
+
+The two sample types are perfectly separated from the start. The separation between groups is `r round(Sep(HC),2)`.  
+
+We examine the proportion of OTU subsets of reasonable size that already classify them correctly. 
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1717567904
+initial_seed %% 10000
+# [1] 7904
+```
+
+
+```{r,eval=FALSE}
+set.seed(7904)
+Experimento=function(i)
+{
+  ii=sample(dim(DF)[2],i,rep=FALSE)
+  DFtemp=DF[,ii]
+  CC=ClusterHC(DFtemp,dendrograma=FALSE,barplot=FALSE, Grups=Type,colores=colors)
+  c(Encerts(CC$tabla,table(Type)),Sep(CC))
+}
+n=250
+F.SS=c()
+for (i in 10:750)
+  {
+  print(i)
+  EE=replicate(n,Experimento(i))
+  EE.2=EE[2,which(EE[1,]==0)]
+XX=replicate(1000,mean(sample(EE.2,n,replace=TRUE)))
+  F.SS=rbind(F.SS, c(i,
+                     length(EE.2)/250,
+                      mean(EE.2),
+                      quantile(XX,0.025),
+                      quantile(XX,0.975)
+  ))
+  }
+colnames(F.SS)=c("n","proporción","sep. media","Q_0.025","Q_0.975")
+saveRDS(F.SS, file="Fraccio.Separadors.T0.RData")
+```
+
+```{r}
+F.SS=readRDS("Fraccio.Separadors.T0.RData")
+```
+
+The first plot shows, for each $n$ up to half the total number of OTUs, the proportion of samples of size $n$ that perfectly classify CAU_T0 and CYM_T0 (black curve), along with the 95% Clopper–Pearson confidence interval for that proportion (red curves). We used *smoothing splines* to smooth the curves.  
+
+```{r}
+F.SS_prop.Q_0.025=epitools::binom.exact(F.SS[,2]*250,250)$lower
+F.SS_prop.Q_0.975=epitools::binom.exact(F.SS[,2]*250,250)$upper
+fit = smooth.spline(F.SS[,1],F.SS[,2],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS_prop.Q_0.025,cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS_prop.Q_0.975,cv=TRUE)
+
+
+plot(F.SS[,1:2],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Proportion",main="Proportion of perfect classifiers",xlim=c(0,750),xaxp=c(0,750,15),yaxp=c(0,1,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+
+```
+
+The second plot shows, for each $n$ up to half the total number of OTUs, the estimated mean separation obtained with a sample of size $n$ that perfectly classifies CAU_T0 and CYM_T0 (black curve), along with the 95% confidence interval of this mean separation obtained via bootstrap (red curve). 
+
+
+
+```{r}
+fit = smooth.spline(F.SS[,1],F.SS[,3],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS[,4],cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS[,5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xlim=c(0,750),xaxp=c(0,750,15),yaxp=c(0,2.5,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+abline(h=separacio.global,col="green")
+```
+  `
+
+#### OTUs significant according to ALDeX
+
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1717574148
+initial_seed %% 10000
+# [1] 4148
+```
+
+```{r,eval=FALSE}
+set.seed(4148)
+repl.kw.Cescv2.T0=aldexCesc.clr(t(DF), conds=Type, mc.samples=1000, verbose=FALSE)
+aldex.kw.Cescv2.T0=aldex.kw(repl.kw.Cescv2.T0, verbose=FALSE)
+#'
+saveRDS(aldex.kw.Cescv2.T0, file="aldex_kw_Cescv2.T0.RData")
+```
+
+
+
+**Taxa with statistically significant differences:**
+
+```{r}
+p.valores_kw=readRDS("aldex_kw_Cescv2.T0.RData") 
+```
+
+```{r}
+length(p.valores_kw[p.valores_kw[,2]<0.05,2]) #K-W adjusted p-value < 0.05
+length(p.valores_kw[p.valores_kw[,1]<0.05,2]) #p-value < 0.05
+length(p.valores_kw[p.valores_kw[,1]<0.01,4]) #p-value < 0.01
+```
+
+There is no OTU with an adjusted Kruskal–Wallis test p-value < 0.05. There are `r length(p.valores_kw[p.valores_kw[,1]<0.05,2])` with an unadjusted p-value < 0.05 (and none < 0.01). They classify the samples correctly:  
+
+```{r}
+sep.kw.005=QQ.HC.noadjust(p.valores_kw,DF,Type,q=0.05,1,BP=FALSE)
+kw.005=which(p.valores_kw[,2]<0.001) 
+```
+
+The separation between groups is `r round(sep.kw.005[2],2)`.  
+
+
+```{r}
+Significant=data.frame(
+  OTUs=paste("OTU",1:n.OTUs.original,sep=""),
+  taxa=taxa.original,
+  Aldex.kw.0.05=Indicador(kw.005)
+)
+```
+
+
+
+#### Taxa with maximum relevant log-ratios  
+
+
+```{r,eval=FALSE}
+LRS=explore_logratios(DF,Type)
+saveRDS(LRS, file="LRS_T0.RData")
+```
+
+```{r}
+LRS=readRDS("LRS_T0.RData")
+```
+
+
+```{r,eval=FALSE}
+assoc=rep(0,dim(DF)[2]-4)
+for (m in 5:dim(DF)[2]){
+    assoc[m-4]=sum(LRS$`association log-ratio with y`[1:m,1:m])/m^2
+}
+saveRDS(assoc, file="assoc_T0.RData")
+```
+
+
+```{r}
+assoc=readRDS("assoc_T0.RData")
+plot(5:200,assoc[1:196],type="b",xlab="m",ylab="Bondad mediana de los m más relevantes"
+     ,pch=20,cex=0.5)
+```
+
+```{r}
+m=4+which.max(assoc)
+impLR=sort(as.numeric(LRS$`order of importance`[1:m]))
+DF.Imp=DF[,impLR]
+HC=ClusterHC(DF.Imp,dendrograma=FALSE,barplot=FALSE, Grups=Type)
+LR.max=c(length(impLR),Sep(HC))
+```
+
+
+The maximum is attained at the set of `r LR.max[1]` most logratio-relevant taxa.  
+ They perfectly separate the two sample types. The separation between groups is `r round(LR.max[2],2)`. 
+
+**Note** In the plot we can observe a very pronounced local maximum at `r 4+which.max(assoc[1:100])`. Let us examine it:  
+
+```{r}
+m0=4+which.max(assoc[1:100])
+impLR.2=sort(as.numeric(LRS$`order of importance`[1:m0]))
+DF.Imp.0=DF[,impLR.2]
+HC=ClusterHC(DF.Imp.0,dendrograma=TRUE,barplot=FALSE, Grups=Type)
+LR.max.2=c(length(impLR.2),Sep(HC))
+```
+
+
+They also perfectly separate the two sample types. The separation between groups is `r round(LR.max.2[2],2)`.  Fewer taxa, but better separation.  
+
+
+
+```{r}
+Significant=cbind(Significant,
+                     Log_ratio.max=Indicador(impLR),
+                     Log_ratio.max2=Indicador(impLR.2))
+```
+
+
+
+#### Taxa relevant for the bacterial signature (according to `coda_glmnet`)  
+
+
+```{r,eval=FALSE}
+coda.glmnet=coda_glmnet(DF,Type,showPlots = FALSE)
+saveRDS(coda.glmnet, file="coda.glmnet.T0.RData")
+```
+
+
+```{r}
+coda.glmnet=readRDS("coda.glmnet.T0.RData")
+coda.glmnet$`signature plot`
+```
+
+```{r}
+impGLMNET=coda.glmnet$taxa.num
+DF.Imp=DF[,impGLMNET]
+HC=ClusterHC(DF.Imp,dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.no0=c(length(coda.glmnet$taxa.num),Sep(HC))
+```
+
+
+
+There are `r glmnet.no0[1]` significant taxa.  
+The separation between groups is `r round(glmnet.no0[2],2)`. 
+
+
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.no0.CAU=Indicador(coda.glmnet$taxa.num[coda.glmnet$`log-contrast coefficients`>0]),
+glmnet_sign.no0.CYM=Indicador(coda.glmnet$taxa.num[coda.glmnet$`log-contrast coefficients`<0]))
+```
+
+Out of curiosity, we use 3 replicates to see what happens.  
+
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1717687628
+initial_seed %% 10000
+# [1] 7628
+```
+
+```{r}
+M=3
+set.seed(7628)
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(
+  repls$CAU_T0_1,repls$CAU_T0_2,repls$CAU_T0_3,
+    repls$CYM_T0_1,repls$CYM_T0_2,repls$CYM_T0_3
+  ))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(
+  paste("CAU_T0_1",1:M,sep="_"),
+  paste("CAU_T0_2",1:M,sep="_"),
+  paste("CAU_T0_3",1:M,sep="_"),
+  paste("CYM_T0_1",1:M,sep="_"),
+  paste("CYM_T0_2",1:M,sep="_"),
+  paste("CYM_T0_3",1:M,sep="_")
+  )
+mostres_ext=rbind(repls,easyCODA::CLR(DF)$LR)
+conds_ext=as.factor(c(rep("CAU", 3*M),rep("CYM", 3*M),rep("CAU", 3),rep("CYM", 3)))
+colors_ext=c("green","blue")[conds_ext]
+rm(repls)
+```
+
+```{r,eval=FALSE}
+LogRat_mostres_ext_T0=logratios_matrix_clr(mostres_ext)
+saveRDS(LogRat_mostres_ext_T0, file="LogRat_mostres_ext_T0.RData")
+```
+
+```{r}
+LogRat_mostres_ext_T0=readRDS("LogRat_mostres_ext_T0.RData")
+LogRat_mostres_ext_T0=list(LogRat_mostres_ext_T0[[1]],LogRat_mostres_ext_T0[[2]])
+
+coda.glmnet_ext=coda_glmnet_lr_bin(LogRat_mostres_ext_T0,conds_ext,taxa,showPlots = FALSE)
+
+
+coda.glmnet_ext$`signature plot`
+```
+
+```{r}
+impGLMNET_ext=coda.glmnet_ext$taxa.num
+DF.Imp=DF[,impGLMNET_ext]
+HC=ClusterHC(DF.Imp,dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext=c(length(impGLMNET_ext),Sep(HC))
+```
+
+
+There are `r glmnet.ext[1]` significant taxa.  
+The separation between groups is `r round(glmnet.ext[2],2)`. 
+
+
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.CAU=Indicador(coda.glmnet_ext$taxa.num[coda.glmnet_ext$`log-contrast coefficients`>0]),
+glmnet_sign.ext.CYM=Indicador(coda.glmnet_ext$taxa.num[coda.glmnet_ext$`log-contrast coefficients`<0]))
+```
+
+
+
+### Simper 
+
+
+
+```{r}
+DF.prop=DF.0.total[c(1:3,13:15),]/rowSums(DF.0.total[c(1:3,13:15),])
+SMP.prop=simper(DF.prop,group=Type)
+```
+
+
+
+```{r}
+indexos_SMP.07=SMP.prop$CAU_T2C_CAU_T2HW$ord[which(SMP.prop$CAU_T2C_CAU_T2HW$cusum<=0.7)]
+indexos_SMP.05=SMP.prop$CAU_T2C_CAU_T2HW$ord[which(SMP.prop$CAU_T2C_CAU_T2HW$cusum<=0.5)]
+length(indexos_SMP.07)
+length(indexos_SMP.05)
+```
+
+
+We find no significant taxon.
+
+
+
+
+#### Summary
+
+
+```{r}
+write.csv2(Significant,"OTU_Significativos_CAUT0vsCYMT0.csv",row.names=FALSE)
+```
+
+
+```{r}
+Resultados=rbind(
+LR.max,
+LR.max.2,
+sep.kw.005,
+glmnet.no0,
+glmnet.ext)
+row.names(Resultados)=c(
+"LR.max",
+"LR.max.local",
+"Aldex",
+"glmnet",
+"glmnet.ext"
+)
+colnames(Resultados)=c("Size","Separation")
+```
+  
+```{r,fig.width=10, out.width="75%"} 
+fit = smooth.spline(F.SS[,1],F.SS[,3],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS[,4],cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS[,5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xlim=c(0,750),xaxp=c(0,750,15),ylim=c(0,7),yaxp=c(0,7,28))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+abline(h=separacio.global,col="green")
+
+points(Resultados,col="blue",type="h")
+points(Resultados,col="blue",pch=20)
+text(Resultados[,1],Resultados[,2]+0.1,col="blue",labels=row.names(Resultados),cex=0.75)
+text(20,separacio.global+0.01,col="green",labels="Global",cex=0.75)
+
+```
+
+
+
+Finally, we intersect the OTUs identified as significant according to LR and `coda_glmnet`.  
+
+```{r}
+Significant.capat=Significant[,c(1,2,4,6,7)]
+Significant.capat=cbind(Significant.capat,Cuánto=rowSums(Significant.capat[,3:dim(Significant.capat)[2]]))
+Significant.capat=Significant.capat[Significant.capat$Cuánto==2,]
+```
+
+
+
+```{r}
+DF.Imp=DF[,Significant.capat[,1]]
+HC=ClusterHC(DF.Imp,dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+```
+
+There are `r dim(Significant.capat)[1]` taxa.  They are:
+
+```{r}
+Significant.capat[,1:2]%>%
+  kbl() %>%
+  kable_styling() 
+```
+
+The separation between groups is  `r round(Sep(HC),2)`.
+
+We update the plot with the separations:  
+
+```{r}
+intersección=c(dim(Significant.capat)[1],Sep(HC))
+Resultados=rbind(Resultados,intersección)
+row.names(Resultados)=c(
+"LR.max",
+"LR.max.local",
+"Aldex",
+"glmnet",
+"glmnet.ext",
+"intersection")
+colnames(Resultados)=c("Size","Separation")
+```
+  
+```{r,fig.width=10, out.width="50%"} 
+par(opar)
+fit = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),3],cv=TRUE)
+fit.low = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),4],cv=TRUE)
+fit.up = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",ylim=c(0,2.25),xlim=c(0,250),xaxp=c(0,250,10),yaxp=c(0,2.5,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+points(Resultados,col="blue",type="h")
+points(Resultados,col="blue",pch=20)
+text(Resultados[,1],Resultados[,2]+0.02,col="blue",labels=row.names(Resultados),cex=0.75)
+abline(h=2.47,col="green")
+text(20,2.6,col="green",labels="Global",cex=0.75)
+```
+
+
+
+
+
+
+
+
+```{r}
+Resultados %>%
+  kbl() %>%
+  kable_styling()
+```
+
+### CAU T2C vs CAU T2HW
+
+
+```{r}
+tax_otu=as.data.frame(read_excel("TablaOTUs.xlsx"))[1:12,]
+
+Samples=tax_otu$ID 
+taxa=colnames(tax_otu[,3:dim(tax_otu)[2]])
+OTUs=paste("OTU",1:(dim(tax_otu)[2]-2),sep="")
+
+DF.0=tax_otu[,-c(1,2)]
+row.names(DF.0)=Samples
+colnames(DF.0)=OTUs
+
+taxa.original=taxa
+DF.0.original=DF.0
+n.OTUs.original=dim(DF.0)[2]
+
+Miseria=as.vector(which(colSums(DF.0)<=2))
+DF.0=DF.0[,-Miseria]
+taxa=taxa[-Miseria]
+OTUs=OTUs[-Miseria]
+
+hit=function(x){min(c(x,1))}
+DF.0.hits=as.matrix(DF.0)
+DF.0.hits[]=vapply(DF.0.hits, hit, numeric(1))
+
+Unics=data.frame(
+Sample=rep(NA,length(which(colSums(DF.0.hits)==1))), OTUs=names(colSums(DF.0)[which(colSums(DF.0.hits)==1)]), Reads=colSums(DF.0)[which(colSums(DF.0.hits)==1)],
+            Proportions=rep(0,length(which(colSums(DF.0.hits)==1)))  
+)
+for (i in 1:length(Unics$OTUs)){
+ii=which(DF.0.hits[,Unics$OTUs[i]]==1)  
+Unics$Proportions[i]=DF.0[ii,Unics$OTUs[i]]/sum(DF.0[ii,])
+Unics$Sample[i]=Samples[ii]}
+Unics.Freqs=Unics[Unics$Proportions>=0.05/100,]
+row.names(Unics.Freqs)=NULL
+
+
+DF.0=DF.0[,-which(colSums(DF.0.hits)==1)]
+taxa=taxa[-which(colSums(DF.0.hits)==1)]
+OTUs=OTUs[-which(colSums(DF.0.hits)==1)]
+
+row.names(DF.0)=Samples
+
+DF=zCompositions::cmultRepl(DF.0,method="GBM",output="p-counts",suppress.print=TRUE,z.warning=0.99)
+```
+
+```{r}
+DF=DF[7:12,]
+DF.0=DF.0[7:12,]
+DF.0.original=DF.0.original[7:12 ,]
+
+Type=as.factor(c(rep("CAU_T2C", 3),rep("CAU_T2HW", 3)))
+colors=c("purple","red")[Type]
+```
+
+
+After removing OTUs with 2 or fewer reads across the CAU samples and those appearing in only one of these samples, `r length(taxa)` taxa remain.  
+
+The OTUs removed at this step that represent more than 0.05% of the sample in which they appear are:  
+
+```{r}
+Unics.Freqs[rev(order(Unics.Freqs$Proportions)),] %>%
+  kbl() %>%
+  kable_styling()
+```
+
+    
+
+
+
+```{r}
+rm(tax_otu)
+rm(DF.0.hits)
+rm(Miseria)
+rm(Unics.Freqs)
+```
+
+
+#### How different are the samples?  
+
+
+
+```{r,include=TRUE}
+HC=ClusterHC(DF,Grups=Type,colores=colors)
+base=Sep(HC)
+```
+
+The two sample types are NOT well separated.  
+
+
+We examine the proportion of OTU subsets of reasonable size that already classify them correctly. 
+
+
+
+```{r,eval=FALSE}
+# Fijo una semilla de aleatoriedad para el experimento
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1715851715853234
+initial_seed %% 10000
+# [1] 3234
+```
+
+
+```{r,eval=FALSE}
+set.seed(3234)
+Experimento=function(i)
+{
+  ii=sample(dim(DF)[2],i,rep=FALSE)
+  DFtemp=DF[,ii]
+  CC=ClusterHC(DFtemp,dendrograma=FALSE,barplot=FALSE, Grups=Type,colores=colors)
+  c(Encerts(CC$tabla,table(Type)),Sep(CC))
+}
+n=500
+F.SS=c()
+for (i in 10:1000)
+  {
+  print(i)
+  EE=replicate(n,Experimento(i))
+  EE.2=EE[2,which(EE[1,]==0)]
+  if(length(which(EE[1,]==0))>0){
+XX=replicate(1000,mean(sample(EE.2,n,replace=TRUE)))
+  F.SS=rbind(F.SS, c(i,
+                     length(EE.2)/250,
+                      mean(EE.2),
+                      quantile(XX,0.025),
+                      quantile(XX,0.975)
+  ))}
+  else {
+    F.SS=rbind(F.SS, c(i,
+                     0,
+                      NA,
+                      NA,
+                      NA))
+  }
+  }
+colnames(F.SS)=c("n","Proportion","Avg. sep.","Q_0.025","Q_0.975")
+saveRDS(F.SS, file="Fraccio.Separadors.CAU.T2CvsT2HW.RData")
+```
+
+
+```{r}
+F.SS=readRDS("Fraccio.Separadors.CAU.T2CvsT2HW.RData")
+```
+
+
+
+The first plot shows, for each $n$ up to 600, the proportion of samples of size $n$ that perfectly classify CAU_T2C and CAU_T2HW (black curve), along with the 95% Clopper–Pearson confidence interval for that proportion (red curves). We used *smoothing splines* to smooth the curves.  
+
+```{r}
+F.SS_prop.Q_0.025=epitools::binom.exact(F.SS[,2]*250,250)$lower
+F.SS_prop.Q_0.975=epitools::binom.exact(F.SS[,2]*250,250)$upper
+fit = smooth.spline(F.SS[,1],F.SS[,2],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS_prop.Q_0.025,cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS_prop.Q_0.975,cv=TRUE)
+
+
+plot(F.SS[,1:2],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Proportion",main="Proportion of perfect classifiers",ylim=c(0,0.1),xlim=c(0,600),xaxp=c(0,600,12),yaxp=c(0,0.1,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+
+```
+
+The second plot shows, for each $n$ up to 600, the estimated mean separation obtained with a sample of size $n$ that perfectly classifies CAU_T2C and CAU_T2HW (black curve), along with the 95% confidence interval of this mean separation obtained via bootstrap (red curve). Note that from $n=350$ onward, NO subset is found that separates the two groups.  
+
+
+
+
+```{r}
+fit = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),3],cv=TRUE)
+fit.low = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),4],cv=TRUE)
+fit.up = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xlim=c(0,600),xaxp=c(0,600,12),yaxp=c(0,1.5,15))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+```
+  `
+
+#### Taxa with maximum relevant log-ratios  
+
+
+```{r,eval=FALSE}
+LRS=explore_logratios(DF,Type)
+saveRDS(LRS, file="LRS_CAU_2C2HW.RData")
+```
+
+
+```{r}
+LRS=readRDS("LRS_CAU_2C2HW.RData")
+```
+
+
+```{r,eval=FALSE}
+assoc=rep(0,dim(DF)[2]-4)
+for (m in 5:dim(DF)[2]){
+    assoc[m-4]=sum(LRS$`association log-ratio with y`[1:m,1:m])/m^2
+}
+saveRDS(assoc, file="assoc_CAU_2C2HW.RData")
+```
+
+
+
+
+```{r}
+assoc=readRDS("assoc_CAU_2C2HW.RData")
+plot(5:dim(DF)[2],assoc,type="b",xlab="m",ylab="Average goodness of the m most relevant." ,pch=20,cex=0.5)
+```
+
+
+```{r}
+m=4+which.max(assoc)
+impLR=sort(as.numeric(LRS$`order of importance`[1:m]))
+
+HC=ClusterHC(DF[,impLR],barplot=FALSE,Grups=Type,colores=colors)
+LR.max=c(length(impLR),Sep(HC))
+```
+
+The maximum is attained at the set of `r LR.max[1]` most logratio-relevant taxa.  
+ They perfectly separate the two sample types. The separation between groups is `r round(LR.max[2],2)`. 
+
+
+```{r}
+Significant=data.frame(
+  OTUs=paste("OTU",1:n.OTUs.original,sep=""),
+  taxa=taxa.original,
+  Log_ratio.max=Indicador(impLR))
+```
+
+
+#### Taxa relevant for the bacterial signature (according to `coda_glmnet`)  
+
+
+
+```{r}
+coda.glmnet=coda_glmnet(DF,Type,showPlots = FALSE)
+coda.glmnet$`signature plot`
+```
+
+`coda_glmnet` does not find taxa with significant differences, likely due to the low power with only 3 vs. 3 samples. When this happens, we add random replicates, with the idea that stochastic resonance may strengthen the signal. We test with 3, 5, and 10 replicates.  
+
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1711435693
+initial_seed %% 10000
+# [1] 5693
+```
+
+
+```{r}
+# 3 replicates
+set.seed(5693)
+M=3
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+```
+
+```{r}
+repls=t(cbind(repls$CAU_T2C_1,repls$CAU_T2C_2,repls$CAU_T2C_3,repls$CAU_T2HW_1,repls$CAU_T2HW_2,repls$CAU_T2HW_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CAU_T2C_1",1:M,sep="_"),
+  paste("CAU_T2C_2",1:M,sep="_"),
+  paste("CAU_T2C_3",1:M,sep="_"),
+  paste("CAU_T2HW_1",1:M,sep="_"),
+  paste("CAU_T2HW_2",1:M,sep="_"),
+  paste("CAU_T2HW_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CAU_T2C", 3*M),rep("CAU_T2HW", 3*M),rep("CAU_T2C", 3),rep("CAU_T2HW", 3)))
+colors_ext=c("purple","red")[Type_ext]
+```
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+saveRDS(LogRat_mostres, file="LogRat_mostres_CAU_2C2HW_3copies.RData")
+```
+
+
+
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CAU_2C2HW_3copies.RData")
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+
+coda.glmnet.3=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,taxa,showPlots = FALSE)
+
+impGLMNET_ext.3=coda.glmnet.3$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.3],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.3=c(length(impGLMNET_ext.3),Sep(HC))
+```
+
+With 3 replicates, `r glmnet.ext.3[1]` significant taxa are found, perfectly separating the two groups, with a separation of `r round(glmnet.ext.3[2],2)`.  
+
+```{r}
+# 5 replicates
+set.seed(5693)
+M=5
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(repls$CAU_T2C_1,repls$CAU_T2C_2,repls$CAU_T2C_3,repls$CAU_T2HW_1,repls$CAU_T2HW_2,repls$CAU_T2HW_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CAU_T2C_1",1:M,sep="_"),
+  paste("CAU_T2C_2",1:M,sep="_"),
+  paste("CAU_T2C_3",1:M,sep="_"),
+  paste("CAU_T2HW_1",1:M,sep="_"),
+  paste("CAU_T2HW_2",1:M,sep="_"),
+  paste("CAU_T2HW_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CAU_T2C", 3*M),rep("CAU_T2HW", 3*M),rep("CAU_T2C", 3),rep("CAU_T2HW", 3)))
+colors_ext=c("purple","red")[Type_ext]
+```
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+saveRDS(LogRat_mostres, file="LogRat_mostres_CAU_2C2HW_5copies.RData")
+```
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CAU_2C2HW_5copies.RData")
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+
+coda.glmnet.5=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,taxa,showPlots = FALSE)
+
+impGLMNET_ext.5=coda.glmnet.5$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.5],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.5=c(length(impGLMNET_ext.5),Sep(HC))
+```
+
+With 5 replicates, `r glmnet.ext.5[1]` significant taxa are found, perfectly separating the two groups, with a separation of `r round(glmnet.ext.5[2],2)`. 
+
+
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.5.T2C=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.5$`log-contrast coefficients`>0]),
+glmnet_sign.ext.5.T2HW=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.5$`log-contrast coefficients`<0]))
+```
+
+
+```{r}
+set.seed(5693)
+M=10
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(repls$CAU_T2C_1,repls$CAU_T2C_2,repls$CAU_T2C_3,repls$CAU_T2HW_1,repls$CAU_T2HW_2,repls$CAU_T2HW_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CAU_T2C_1",1:M,sep="_"),
+  paste("CAU_T2C_2",1:M,sep="_"),
+  paste("CAU_T2C_3",1:M,sep="_"),
+  paste("CAU_T2HW_1",1:M,sep="_"),
+  paste("CAU_T2HW_2",1:M,sep="_"),
+  paste("CAU_T2HW_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CAU_T2C", 3*M),rep("CAU_T2HW", 3*M),rep("CAU_T2C", 3),rep("CAU_T2HW", 3)))
+colors_ext=c("purple","red")[Type_ext]
+```
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+saveRDS(LogRat_mostres, file="LogRat_mostres_CAU_2C2HW_10copies.RData")
+```
+
+
+
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CAU_2C2HW_10copies.RData")
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+
+coda.glmnet.10=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,taxa,showPlots = FALSE)
+
+impGLMNET_ext.10=coda.glmnet.10$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.10],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.10=c(length(impGLMNET_ext.10),Sep(HC))
+```
+
+With 10 replicates, `r glmnet.ext.10[1]` significant taxa are found, perfectly separating the two groups, with a separation of `r round(glmnet.ext.10[2],2)`. 
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.10.T2C=Indicador(coda.glmnet.10$taxa.num[coda.glmnet.10$`log-contrast coefficients`>0]),
+glmnet_sign.ext.10.T2HW=Indicador(coda.glmnet.10$taxa.num[coda.glmnet.10$`log-contrast coefficients`<0]))
+```
+
+
+
+
+#### OTUs significant according to ALDeX
+
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1711461735
+initial_seed %% 10000
+# [1] 1735
+```
+
+```{r,eval=FALSE}
+set.seed(1735)
+repl_kw=aldexCesc.clr(t(DF), conds=Type, mc.samples=1000, verbose=FALSE)
+aldex_kw=aldex.kw(repl_kw, verbose=FALSE)
+#
+saveRDS(repl_kw, file="repl_kw_CAU_2C2HW.RData")
+saveRDS(aldex_kw, file="aldex_kw_CAU_2C2HW.RData")
+```
+
+
+```{r}
+p.valores_kw=readRDS("aldex_kw_CAU_2C2HW.RData") 
+```
+
+```{r}
+min(p.valores_kw[,1])
+min(p.valores_kw[,2])
+min(p.valores_kw[,3])
+min(p.valores_kw[,4])
+
+length(p.valores_kw[p.valores_kw[,3]<0.01,2])
+length(p.valores_kw[p.valores_kw[,3]<0.05,2])
+```
+
+
+There are no taxa with even an unadjusted p-value < 0.05.  
+
+
+
+
+#### Simper 
+
+
+
+```{r}
+DF.prop=DF.0.original/rowSums(DF.0.original)
+SMP.prop=simper(DF.prop,group=Type)
+indexos_SMP.07=SMP.prop$CAU_T2C_CAU_T2HW$ord[which(SMP.prop$CAU_T2C_CAU_T2HW$cusum<=0.7)]
+indexos_SMP.05=SMP.prop$CAU_T2C_CAU_T2HW$ord[which(SMP.prop$CAU_T2C_CAU_T2HW$cusum<=0.5)]
+
+OTUs_SMP.07=sort(attr(SMP.prop$CAU_T2C_CAU_T2HW$cusum[which(SMP.prop$CAU_T2C_CAU_T2HW$cusum<=0.7)],"names"))
+OTUs_SMP.good.07=setdiff(OTUs_SMP.07,Unics$OTUs)
+
+```
+
+
+`simper` identifies `r length(indexos_SMP.07)` significant taxa, but they do not separate the samples well.  
+
+
+
+
+```{r}
+HC=ClusterHC(DF[,OTUs_SMP.good.07],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+```
+
+
+```{r}
+Significant=cbind(Significant,
+t(DF.prop))
+```
+
+
+#### Summary
+
+
+```{r}
+write.csv2(Significant,"OTU_Significativos_CAU_T2.csv",row.names=FALSE)
+```
+
+```{r}
+Resultados=rbind(
+LR.max,
+glmnet.ext.3,
+glmnet.ext.5,
+glmnet.ext.10
+
+)
+row.names(Resultados)=c(
+"LR",
+"glmnet.ext.3",
+"glmnet.ext.5",
+"glmnet.ext.10")
+colnames(Resultados)=c("Size","Separation")
+```
+  
+```{r,fig.width=10, out.width="50%"} 
+fit = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),3],cv=TRUE)
+fit.low = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),4],cv=TRUE)
+fit.up = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",ylim=c(0,2.25),xlim=c(0,250),xaxp=c(0,250,10),yaxp=c(0,2.5,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+
+points(Resultados,col="blue",type="h")
+points(Resultados,col="blue",pch=20)
+text(Resultados[,1],Resultados[,2]+0.02,col="blue",labels=row.names(Resultados),cex=0.75)
+
+```
+
+
+
+
+
+Finally, we intersect the OTUs identified as significant according to LR and `coda_glmnet` with 3 replicates 
+
+```{r}
+Significant.capat=Significant[,c(1,2,3,4,5)]
+Significant.capat=cbind(Significant.capat,Cuánto=rowSums(Significant.capat[,3:dim(Significant.capat)[2]]))
+Significant.capat=Significant.capat[Significant.capat$Cuánto==2,]
+```
+
+
+
+```{r}
+DF.Imp=DF[,Significant.capat[,1]]
+HC=ClusterHC(DF.Imp,dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+```
+
+There are `r dim(Significant.capat)[1]` taxa. They are:
+
+```{r}
+Significant.capat[,1:2]%>%
+  kbl() %>%
+  kable_styling() 
+```
+
+The separation between groups is `r round(Sep(HC),2)`.  
+
+
+We update the plot with the separations:  
+
+```{r}
+intersección=c(dim(Significant.capat)[1],Sep(HC))
+Resultados=rbind(Resultados,intersección)
+row.names(Resultados)=c(
+"LR",
+"glmnet.ext.3",
+"glmnet.ext.5",
+"glmnet.ext.10",
+"intersection")
+colnames(Resultados)=c("Size","Separation")
+```
+  
+```{r,fig.width=10, out.width="50%"} 
+par(opar)
+fit = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),3],cv=TRUE)
+fit.low = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),4],cv=TRUE)
+fit.up = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",ylim=c(0,2.25),xlim=c(0,250),xaxp=c(0,250,10),yaxp=c(0,2.5,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+points(Resultados,col="blue",type="h")
+points(Resultados,col="blue",pch=20)
+text(Resultados[,1],Resultados[,2]+0.02,col="blue",labels=row.names(Resultados),cex=0.75)
+abline(h=2.47,col="green")
+text(20,2.6,col="green",labels="Global",cex=0.75)
+```
+
+
+
+
+
+```{r}
+Resultados %>%
+  kbl() %>%
+  kable_styling()
+```
+
+### CYM T2C vs CYM T2HW
+
+```{r}
+tax_otu=as.data.frame(read_excel("TablaOTUs.xlsx"))[13:24,]
+Samples=tax_otu$ID 
+taxa=colnames(tax_otu[,3:dim(tax_otu)[2]])
+OTUs=paste("OTU",1:(dim(tax_otu)[2]-2),sep="")
+
+DF.0=tax_otu[,-c(1,2)]
+row.names(DF.0)=Samples
+colnames(DF.0)=OTUs
+
+taxa.original=taxa
+DF.0.original=DF.0
+n.OTUs.original=dim(DF.0)[2]
+indices=1:n.OTUs.original
+
+hit=function(x){min(c(x,1))}
+DF.0.hits=as.matrix(DF.0)
+DF.0.hits[]=vapply(DF.0.hits, hit, numeric(1))
+
+Unics=data.frame(
+Sample=rep(NA,length(which(colSums(DF.0.hits)==1))), OTUs=names(colSums(DF.0)[which(colSums(DF.0.hits)==1)]), Reads=colSums(DF.0)[which(colSums(DF.0.hits)==1)],
+            Proportions=rep(0,length(which(colSums(DF.0.hits)==1)))  
+)
+for (i in 1:length(Unics$OTUs)){
+ii=which(DF.0.hits[,Unics$OTUs[i]]==1)  
+Unics$Proportions[i]=DF.0[ii,Unics$OTUs[i]]/sum(DF.0[ii,])
+Unics$Sample[i]=Samples[ii]}
+Unics.Freqs=Unics[Unics$Proportions>=0.05/100,]
+row.names(Unics.Freqs)=NULL
+
+Miseria=as.vector(which(colSums(DF.0)<=2|colSums(DF.0.hits)==1))
+DF.0=DF.0[,-Miseria]
+taxa=taxa[-Miseria]
+OTUs=OTUs[-Miseria]
+indices=indices[-Miseria]
+
+row.names(DF.0)=Samples
+
+DF=zCompositions::cmultRepl(DF.0,method="GBM",output="p-counts",suppress.print=TRUE,z.warning=0.99)
+```
+
+```{r}
+DF.0=DF.0[7:12,]
+DF=DF[7:12,]
+DF.0.original=DF.0.original[7:12 ,]
+
+Type=as.factor(c(rep("CYM_T2C", 3),rep("CYM_T2HW", 3)))
+colors=c("purple","red")[Type]
+```
+
+
+After removing OTUs with 2 or fewer reads across the CAU samples and those appearing in only one of these samples, `r length(taxa)` taxa remain.  
+
+The OTUs removed at this step that represent more than 0.05% of the sample in which they appear are:  
+
+
+```{r}
+Unics.Freqs[rev(order(Unics.Freqs$Proportions)),] %>%
+  kbl() %>%
+  kable_styling()
+```
+
+    
+
+```{r}
+rm(tax_otu)
+rm(DF.0.hits)
+rm(Miseria)
+rm(Unics.Freqs)
+```
+
+#### How different are the samples?  
+
+
+```{r}
+HC=ClusterHC(DF,Grups=Type,colores=colors)
+base=Sep(HC)
+```
+
+The two sample types are perfectly separated from the start. The separation between groups is `r round(base,2)`.  
+
+We examine the proportion of OTU subsets of reasonable size that already classify them correctly.
+
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1714640507
+initial_seed %% 10000
+# [1] 507
+```
+
+
+```{r,eval=FALSE}
+set.seed(507)
+Experimento=function(i)
+{
+  ii=sample(dim(DF)[2],i,rep=FALSE)
+  DFtemp=DF[,ii]
+  CC=ClusterHC(DFtemp,dendrograma=FALSE,barplot=FALSE, Grups=Type,colores=colors)
+  c(Encerts(CC$tabla,table(Type)),Sep(CC))
+}
+n=250
+F.SS=c()
+for (i in 10:1000)
+  {
+  print(i)
+  EE=replicate(n,Experimento(i))
+  EE.2=EE[2,which(EE[1,]==0)]
+XX=replicate(1000,mean(sample(EE.2,n,replace=TRUE)))
+  F.SS=rbind(F.SS, c(i,
+                     length(EE.2)/250,
+                      mean(EE.2),
+                      quantile(XX,0.025),
+                      quantile(XX,0.975)
+  ))
+  }
+colnames(F.SS)=c("n","Proportion","Avg. sep.","Q_0.025","Q_0.975")
+saveRDS(F.SS, file="Fraccio.Separadors.CYM.T2CvsT2HW.RData")
+```
+
+
+```{r}
+F.SS=readRDS("Fraccio.Separadors.CYM.T2CvsT2HW.RData")
+```
+
+
+The first plot shows, for each $n$ up to 600, the proportion of samples of size $n$ that perfectly classify CYM_T2C and CYM_T2HW (black curve), along with the 95% Clopper–Pearson confidence interval for that proportion (red curves). We used *smoothing splines* to smooth the curves.  
+
+```{r}
+F.SS_prop.Q_0.025=epitools::binom.exact(F.SS[,2]*250,250)$lower
+F.SS_prop.Q_0.975=epitools::binom.exact(F.SS[,2]*250,250)$upper
+fit = smooth.spline(F.SS[,1],F.SS[,2],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS_prop.Q_0.025,cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS_prop.Q_0.975,cv=TRUE)
+
+
+plot(F.SS[,1:2],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Proportion",main="Proportion of perfect classifiers",xlim=c(0,1000),xaxp=c(0,1000,20),yaxp=c(0,1,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+
+```
+
+
+The second plot shows, for each $n$ up to 600, the estimated mean separation obtained with a sample of size $n$ that perfectly classifies CYM_T2C and CYM_T2HW (black curve), along with the 95% confidence interval of this mean separation obtained via bootstrap (red curve). 
+
+
+```{r}
+fit = smooth.spline(F.SS[,1],F.SS[,3],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS[,4],cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS[,5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xlim=c(0,1000),xaxp=c(0,1000,20),yaxp=c(0,2.5,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+abline(h=base,col="green")
+```
+  `
+
+#### Taxa with maximum relevant log-ratios  
+
+
+```{r,eval=FALSE}
+LRS=explore_logratios(DF,Type)
+saveRDS(LRS, file="LRS_CYM_2C2HW.RData")
+```
+
+
+```{r}
+LRS=readRDS("LRS_CYM_2C2HW.RData")
+```
+
+
+```{r,eval=FALSE}
+assoc=rep(0,dim(DF)[2]-4)
+for (m in 5:dim(DF)[2]){
+    assoc[m-4]=sum(LRS$`association log-ratio with y`[1:m,1:m])/m^2
+}
+saveRDS(assoc, file="assoc_CYM_2C2HW.RData")
+```
+
+
+
+
+```{r}
+assoc=readRDS("assoc_CYM_2C2HW.RData")
+plot(5:dim(DF)[2],assoc,type="b",xlab="m",ylab="Average goodness of the m most relevant." ,pch=20,cex=0.5)
+```
+
+
+```{r}
+m=4+which.max(assoc)
+impLR=sort(as.numeric(LRS$`order of importance`[1:m]))
+
+HC=ClusterHC(DF[,impLR],barplot=FALSE,Grups=Type,colores=colors)
+LR.max=c(length(impLR),Sep(HC))
+```
+
+The maximum is attained at the set of `r LR.max[1]` most logratio-relevant taxa.  
+ They perfectly separate the two sample types. The separation between groups is `r round(LR.max[2],2)`. 
+
+```{r}
+Significant=data.frame(
+  OTUs=paste("OTU",1:n.OTUs.original,sep=""),
+  taxa=taxa.original,
+  Log_ratio.max=Indicador(impLR)
+  )
+```
+
+
+#### Taxa relevant for the bacterial signature (according to `coda_glmnet`)  
+
+
+
+```{r}
+coda.glmnet=coda_glmnet(DF,Type,showPlots = FALSE)
+coda.glmnet$`signature plot`
+```
+
+`coda_glmnet` does not find taxa with significant differences. We add random replicates. We test with 3, 5, and 10 replicates.  
+
+
+
+
+```{r}
+# 3 replicates
+set.seed(5693)
+M=3
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(repls$CYM_T2C_1,repls$CYM_T2C_2,repls$CYM_T2C_3,repls$CYM_T2HW_1,repls$CYM_T2HW_2,repls$CYM_T2HW_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CYM_T2C_1",1:M,sep="_"),
+  paste("CYM_T2C_2",1:M,sep="_"),
+  paste("CYM_T2C_3",1:M,sep="_"),
+  paste("CYM_T2HW_1",1:M,sep="_"),
+  paste("CYM_T2HW_2",1:M,sep="_"),
+  paste("CYM_T2HW_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CYM_T2C", 3*M),rep("CYM_T2HW", 3*M),rep("CYM_T2C", 3),rep("CYM_T2HW", 3)))
+colors_ext=c("purple","red")[Type_ext]
+```
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+saveRDS(LogRat_mostres, file="LogRat_mostres_CYM_2C2HW_3copies.RData")
+```
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CYM_2C2HW_3copies.RData")
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+
+coda.glmnet.3=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,taxa,showPlots = FALSE)
+
+impGLMNET_ext.3=coda.glmnet.3$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.3],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.3=c(length(impGLMNET_ext.3),Sep(HC))
+```
+
+
+With 3 replicates, `r glmnet.ext.3[1]` significant taxa are found, perfectly separating the two groups, with a separation of `r round(glmnet.ext.3[2],2)`.  
+
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.3.T2C=Indicador(coda.glmnet.3$taxa.num[coda.glmnet.3$`log-contrast coefficients`>0]),
+glmnet_sign.ext.3.T2HW=Indicador(coda.glmnet.3$taxa.num[coda.glmnet.3$`log-contrast coefficients`<0]))
+```
+
+
+
+```{r}
+# 5 replicates
+set.seed(5693)
+M=5
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(repls$CYM_T2C_1,repls$CYM_T2C_2,repls$CYM_T2C_3,repls$CYM_T2HW_1,repls$CYM_T2HW_2,repls$CYM_T2HW_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CYM_T2C_1",1:M,sep="_"),
+  paste("CYM_T2C_2",1:M,sep="_"),
+  paste("CYM_T2C_3",1:M,sep="_"),
+  paste("CYM_T2HW_1",1:M,sep="_"),
+  paste("CYM_T2HW_2",1:M,sep="_"),
+  paste("CYM_T2HW_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CYM_T2C", 3*M),rep("CYM_T2HW", 3*M),rep("CYM_T2C", 3),rep("CYM_T2HW", 3)))
+colors_ext=c("purple","red")[Type_ext]
+```
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+saveRDS(LogRat_mostres, file="LogRat_mostres_CYM_2C2HW_5copies.RData")
+```
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CYM_2C2HW_5copies.RData")
+LogRat_mostres[[1]]=LogRat_mostres[[1]][c(1:30,37:42),]
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+
+coda.glmnet.5=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,taxa,showPlots = FALSE)
+
+impGLMNET_ext.5=coda.glmnet.5$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.5],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.5=c(length(impGLMNET_ext.5),Sep(HC))
+```
+
+
+With 5 replicates, `r glmnet.ext.5[1]` significant taxa are found, perfectly separating the two groups, with a separation of `r round(glmnet.ext.5[2],2)`.  
+
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.5.T2C=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.5$`log-contrast coefficients`>0]),
+glmnet_sign.ext.5.T2HW=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.5$`log-contrast coefficients`<0]))
+```
+
+
+```{r}
+set.seed(5693)
+M=10
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(repls$CYM_T2C_1,repls$CYM_T2C_2,repls$CYM_T2C_3,repls$CYM_T2HW_1,repls$CYM_T2HW_1,repls$CYM_T2HW_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CYM_T2C_1",1:M,sep="_"),
+  paste("CYM_T2C_2",1:M,sep="_"),
+  paste("CYM_T2C_3",1:M,sep="_"),
+  paste("CYM_T2HW_1",1:M,sep="_"),
+  paste("CYM_T2HW_2",1:M,sep="_"),
+  paste("CYM_T2HW_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CYM_T2C", 3*M),rep("CYM_T2HW", 3*M),rep("CYM_T2C", 3),rep("CYM_T2HW", 3)))
+colors_ext=c("purple","red")[Type_ext]
+
+```
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+saveRDS(LogRat_mostres, file="LogRat_mostres_CYM_2C2HW_10copies.RData")
+```
+
+
+
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CYM_2C2HW_10copies.RData")
+LogRat_mostres[[1]]=LogRat_mostres[[1]][c(1:60,67:72),]
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+
+coda.glmnet.10=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,taxa,showPlots = FALSE)
+
+impGLMNET_ext.10=coda.glmnet.10$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.10],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.10=c(length(impGLMNET_ext.10),Sep(HC))
+```
+
+
+With 10 replicates, `r glmnet.ext.10[1]` significant taxa are found, perfectly separating the two groups, with a separation of `r round(glmnet.ext.10[2],2)`. 
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.10.T2C=Indicador(coda.glmnet.10$taxa.num[coda.glmnet.10$`log-contrast coefficients`>0]),
+glmnet_sign.ext.10.T2HW=Indicador(coda.glmnet.10$taxa.num[coda.glmnet.10$`log-contrast coefficients`<0]))
+```
+
+
+
+#### OTUs significant according to ALDeX
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1711815195
+initial_seed %% 10000
+# [1] 5195
+```
+
+
+```{r,eval=FALSE}
+set.seed(5195)
+repl_kw=aldexCesc.clr(t(DF), Type=Type, mc.samples=1000, verbose=FALSE)
+aldex_kw=aldex.kw(repl_kw, verbose=FALSE)
+#
+saveRDS(repl_kw, file="repl_kw_2C2HW.RData")
+saveRDS(aldex_kw, file="aldex_kw_2C2HW.RData")
+```
+
+
+
+```{r}
+p.valores_kw=readRDS("aldex_kw_2C2HW.RData") 
+```
+
+```{r}
+length(p.valores_kw[p.valores_kw[,1]<0.01,1])
+length(p.valores_kw[p.valores_kw[,1]<0.05,1])
+length(p.valores_kw[p.valores_kw[,2]<0.01,2])
+length(p.valores_kw[p.valores_kw[,2]<0.01,2])
+```
+
+
+
+```{r}
+sep.kw.noadjust.0.05=QQ.HC.noadjust(p.valores_kw,DF,Type,q=0.05,1,BP=TRUE)
+```
+
+
+There are no taxa with a Kruskal–Wallis adjusted p-value < 0.05. There are `r dim(p.valores_kw[p.valores_kw[,1]<0.05,])[1]` with an unadjusted p-value < 0.05 (none < 0.01); in the absence of a better option, we select them. They perfectly separate the two groups, with a separation of `r round(sep.kw.noadjust.0.05[2],2)`.  
+
+
+
+```{r}
+Significant=cbind(Significant,
+Aldex.kw.noadjust.0.05=Indicador(sep.kw.noadjust.0.05))
+```
+
+
+### Simper 
+
+
+```{r}
+DF.prop=DF.0.original/rowSums(DF.0.original)
+SMP.prop=simper(DF.prop,group=Type)
+indexos_SMP=SMP.prop$CYM_T2C_CYM_T2HW$ord[which(SMP.prop$CYM_T2C_CYM_T2HW$cusum<=0.7)]
+OTUs_SMP=sort(attr(SMP.prop$CYM_T2C_CYM_T2HW$cusum[which(SMP.prop$CYM_T2C_CYM_T2HW$cusum<=0.7)],"names"))
+OTUs_SMP.good=setdiff(OTUs_SMP,Unics$OTUs)
+HC=ClusterHC(DF[,OTUs_SMP.good],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+simper.props=c(length(indexos_SMP),Sep(HC))
+```
+
+
+We obtain `r simper.props[1]` significant taxa, which perfectly separate the two sample types.They include  `r intersect(OTUs_SMP,Unics$OTUs)`, which we had previously removed because it appeared in only one sample. The separation between groups is `r round(simper.props[2],2)`. 
+
+
+```{r}
+Indicador.Gl=function(x,k=n.OTUs.original){
+  xx=rep(0,k)
+ xx[x]=1
+  return(xx)
+}
+Significant=cbind(Significant,
+simper.rel=Indicador.Gl(indexos_SMP))
+Significant=cbind(Significant,
+t(DF.prop))
+```
+
+
+#### Summary
+
+
+
+
+```{r,include=TRUE}
+write.csv2(Significant,"OTU_Significativos_CYM_T2.csv",row.names=FALSE)
+```
+
+
+
+
+```{r}
+Resultados=rbind(
+LR.max,
+glmnet.ext.3,
+glmnet.ext.5,
+glmnet.ext.10,
+sep.kw.noadjust.0.05,
+simper.props
+)
+row.names(Resultados)=c(
+"LR",
+"glmnet.ext.3",
+"glmnet.ext.5",
+"glmnet.ext.10",
+"Aldex",
+"simper")
+colnames(Resultados)=c("Size","Separation")
+```
+  
+```{r,fig.width=10, out.width="50%"} 
+par(opar)
+fit = smooth.spline(F.SS[,1],F.SS[,3],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS[,4],cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS[,5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xlim=c(0,600),xaxp=c(0,600,12),yaxp=c(0,6,20),ylim=c(0,6))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+points(Resultados,col="blue",type="h")
+points(Resultados,col="blue",pch=20)
+text(Resultados[,1],Resultados[,2]+0.01,col="blue",labels=row.names(Resultados),cex=0.75)
+```
+
+
+
+
+
+
+
+
+
+Finally, we intersect the OTUs identified as significant according to LR and `coda_glmnet` with 3 replicates 
+
+
+```{r,results='markup'}
+Significant.capat=Significant[,c(1,2,3,4,5)]
+Significant.capat=cbind(Significant.capat,Cuánto=rowSums(Significant.capat[,3:dim(Significant.capat)[2]]))
+Significant.capat=Significant.capat[Significant.capat$Cuánto==2,]
+```
+
+
+
+```{r}
+DF.Imp=DF[,Significant.capat[,1]]
+HC=ClusterHC(DF.Imp,dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+```
+
+There are `r dim(Significant.capat)[1]` taxa. They are:
+
+```{r}
+Significant.capat[,1:2]%>%
+  kbl() %>%
+  kable_styling() 
+```
+
+The separation between groups is `r round(Sep(HC),2)`.
+
+We update the plot with the separations:  
+
+```{r}
+intersección=c(dim(Significant.capat)[1],Sep(HC))
+Resultados=rbind(Resultados,intersección)
+row.names(Resultados)=c(
+"LR",
+"glmnet.ext.3",
+"glmnet.ext.5",
+"glmnet.ext.10",
+"Aldex",
+"simper",
+"Intersection")
+colnames(Resultados)=c("Size","Separation")
+```
+  
+```{r,fig.width=10, out.width="50%",eval=FALSE} 
+plot(F.SS[-1,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xlim=c(0,150),xaxp=c(0,150,15),yaxp=c(0,6,12),ylim=c(0,6))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+points(Resultados[-dim(Resultados)[1],],col="blue",type="h")
+points(Resultados[-dim(Resultados)[1],],col="blue",pch=20)
+points(intersección[1],intersección[2],col="purple",type="h")
+points(intersección[1],intersección[2],col="purple",pch=20)
+text(Resultados[-dim(Resultados)[1],1],Resultados[-dim(Resultados)[1],2]+0.1,col="blue",labels=row.names(Resultados)[-dim(Resultados)[1]],cex=0.75)
+text(intersección[1],intersección[2]+0.1,col="purple",labels="intersección",cex=0.75)
+
+abline(h=base,col="green")
+text(20,base+0.1,col="green",labels="Global",cex=0.75)
+```
+
+
+```{r}
+Resultados %>%
+  kbl() %>%
+  kable_styling()
+```
+
+### CAU T0 vs CAU T1
+
+
+```{r}
+tax_otu=as.data.frame(read_excel("TablaOTUs.xlsx"))[1:12,]
+
+Samples=tax_otu$ID 
+taxa=colnames(tax_otu[,3:dim(tax_otu)[2]])
+OTUs=paste("OTU",1:(dim(tax_otu)[2]-2),sep="")
+
+DF.0=tax_otu[,-c(1,2)]
+row.names(DF.0)=Samples
+colnames(DF.0)=OTUs
+
+taxa.original=taxa
+DF.0.original=DF.0
+n.OTUs.original=dim(DF.0)[2]
+
+Miseria=as.vector(which(colSums(DF.0[1:6,])<=3))
+DF.0=DF.0[,-Miseria]
+taxa=taxa[-Miseria]
+OTUs=OTUs[-Miseria]
+
+hit=function(x){min(c(x,1))}
+DF.0.hits=as.matrix(DF.0)
+DF.0.hits[]=vapply(DF.0.hits, hit, numeric(1))
+
+Unics=data.frame(
+Sample=rep(NA,length(which(colSums(DF.0.hits)==1))), OTUs=names(colSums(DF.0)[which(colSums(DF.0.hits)==1)]), Reads=colSums(DF.0)[which(colSums(DF.0.hits)==1)],
+            Proportions=rep(0,length(which(colSums(DF.0.hits)==1)))  
+)
+for (i in 1:length(Unics$OTUs)){
+ii=which(DF.0.hits[,Unics$OTUs[i]]==1)  
+Unics$Proportions[i]=DF.0[ii,Unics$OTUs[i]]/sum(DF.0[ii,])
+Unics$Sample[i]=Samples[ii]}
+Unics.Freqs=Unics[Unics$Proportions>=0.05/100,]
+row.names(Unics.Freqs)=NULL
+
+
+DF.0=DF.0[,-which(colSums(DF.0.hits)==1)]
+taxa=taxa[-which(colSums(DF.0.hits)==1)]
+OTUs=OTUs[-which(colSums(DF.0.hits)==1)]
+
+row.names(DF.0)=Samples
+
+DF=zCompositions::cmultRepl(DF.0,method="GBM",output="p-counts",suppress.print=TRUE,z.warning=0.99)
+```
+
+```{r}
+DF=DF[1:6,]
+DF.0=DF.0[1:6,]
+DF.0.original=DF.0.original[1:6 ,]
+
+Type=as.factor(c(rep("CAU_T0", 3),rep("CAU_T1", 3)))
+colors=c("blue","green")[Type]
+```
+
+
+
+After removing OTUs with 2 or fewer reads across the samples and those appearing in only one of these samples, `r length(taxa)` taxa remain.  
+
+The OTUs removed at this step that represent more than 0.05% of the sample in which they appear are:  
+
+```{r}
+Unics.Freqs[rev(order(Unics.Freqs$Proportions)),] %>%
+  kbl() %>%
+  kable_styling()
+```
+
+
+
+```{r}
+rm(tax_otu)
+rm(DF.0.hits)
+rm(Miseria)
+rm(Unics.Freqs)
+```
+
+
+#### How different are the samples?  
+
+
+```{r}
+HC=ClusterHC(DF,Grups=Type,colores=colors)
+base=Sep(HC)
+```
+
+The two sample types are not initially separated.  
+
+We now examine the proportion of OTU subsets of reasonable size that already classify them correctly.  
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1717749309
+initial_seed %% 10000
+# [1] 9309
+```
+
+```{r,eval=FALSE}
+set.seed(9309)
+Experimento=function(i)
+{
+  ii=sample(dim(DF)[2],i,rep=FALSE)
+  DFtemp=DF[,ii]
+  CC=ClusterHC(DFtemp,dendrograma=FALSE,barplot=FALSE, Grups=Type,colores=colors)
+  c(Encerts(CC$tabla,table(Type)),Sep(CC))
+}
+n=500
+F.SS=c()
+for (i in 10:600) 
+  {
+  print(i)
+  EE=replicate(n,Experimento(i))
+  EE.2=EE[2,which(EE[1,]==0)]
+  if(length(which(EE[1,]==0))>0){
+XX=replicate(1000,mean(sample(EE.2,n,replace=TRUE)))
+  F.SS=rbind(F.SS, c(i,
+                     length(EE.2)/250,
+                      mean(EE.2),
+                      quantile(XX,0.025),
+                      quantile(XX,0.975)
+  ))}
+    else {
+    F.SS=rbind(F.SS, c(i,
+                     0,
+                      NA,
+                      NA,
+                      NA))
+  }
+  }
+colnames(F.SS)=c("n","Proportion","Avg. sep.","Q_0.025","Q_0.975")
+saveRDS(F.SS, file="Fraccio.Separadors.CAU.T0vsT1.RData")
+```
+
+```{r}
+F.SS=readRDS("Fraccio.Separadors.CAU.T0vsT1.RData")
+```
+
+
+
+The first plot shows, for each $n$ up to 500, the proportion of samples of size $n$ that perfectly classify CAU_T0 and CAU_T1 (black curve), along with the 95% Clopper–Pearson confidence interval for that proportion (red curves). We used *smoothing splines* to smooth the curves.  
+
+```{r}
+F.SS_prop.Q_0.025=epitools::binom.exact(F.SS[,2]*250,250)$lower
+F.SS_prop.Q_0.975=epitools::binom.exact(F.SS[,2]*250,250)$upper
+fit = smooth.spline(F.SS[,1],F.SS[,2],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS_prop.Q_0.025,cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS_prop.Q_0.975,cv=TRUE)
+
+
+plot(F.SS[,1:2],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Proportion",main="Proportion of perfect classifiers",ylim=c(0,0.1),xlim=c(0,600),xaxp=c(0,600,12),yaxp=c(0,0.1,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+
+```
+
+The second plot shows, for each $n$ up to 600, the estimated mean separation obtained with a sample of size $n$ that perfectly classifies CAU_T0 and CAU_T1 (black curve), along with the 95% confidence interval of this mean separation obtained via bootstrap (red curve).  
+
+
+
+
+```{r}
+fit = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),3],cv=TRUE)
+fit.low = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),4],cv=TRUE)
+fit.up = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xlim=c(0,600),xaxp=c(0,600,12),yaxp=c(0,1.5,15))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+```
+  `
+
+#### Taxa with maximum relevant log-ratios  
+
+
+```{r,eval=FALSE}
+LRS=explore_logratios(DF,Type)
+saveRDS(LRS, file="LRS_CAU_T0T1.RData")
+```
+
+
+```{r}
+LRS=readRDS("LRS_CAU_T0T1.RData")
+
+assoc=rep(0,dim(DF)[2]-4)
+for (m in 5:dim(DF)[2]){
+    assoc[m-4]=sum(LRS$`association log-ratio with y`[1:m,1:m])/m^2
+}
+
+plot(5:dim(DF)[2],assoc,type="b",xlab="m",ylab="Average goodness of the m most relevant." ,pch=20,cex=0.5)
+```
+
+
+```{r}
+m=4+which.max(assoc)
+impLR=sort(as.numeric(LRS$`order of importance`[1:m]))
+
+HC=ClusterHC(DF[,impLR],barplot=FALSE,Grups=Type,colores=colors)
+LR.max=c(length(impLR),Sep(HC))
+```
+
+The maximum is attained at the set of `r LR.max[1]` most logratio-relevant taxa.  
+ They perfectly separate the two sample types. The separation between groups is `r round(LR.max[2],2)`. 
+
+```{r}
+Significant=data.frame(
+  OTUs=paste("OTU",1:n.OTUs.original,sep=""),
+  taxa=taxa.original,
+  Log_ratio.max=Indicador(impLR))
+```
+
+
+
+
+
+#### Taxa relevant for the bacterial signature (according to `coda_glmnet`)  
+
+
+```{r}
+coda.glmnet=coda_glmnet(DF,Type,showPlots = FALSE)
+coda.glmnet$`signature plot`
+```
+
+`coda_glmnet` does not find taxa with significant differences. We add random replicates. We test with 3, 5, and 10 replicates.  
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1]  1717764843
+initial_seed %% 10000
+# [1]  4843
+```
+
+
+```{r}
+# 3 replicates
+set.seed(4843)
+M=3
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(repls$CAU_T0_1,repls$CAU_T0_2,repls$CAU_T0_3,repls$CAU_T1_1,repls$CAU_T1_2,repls$CAU_T1_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CAU_T0_1",1:M,sep="_"),
+  paste("CAU_T0_2",1:M,sep="_"),
+  paste("CAU_T0_3",1:M,sep="_"),
+  paste("CAU_T1_1",1:M,sep="_"),
+  paste("CAU_T1_2",1:M,sep="_"),
+  paste("CAU_T1_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CAU_T0", 3*M),rep("CAU_T1", 3*M),rep("CAU_T0", 3),rep("CAU_T1", 3)))
+colors_ext=c("blue","green")[Type_ext]
+```
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+saveRDS(LogRat_mostres, file="LogRat_mostres_CAU_T0T1_3copies.RData")
+```
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CAU_T0T1_3copies.RData")
+coda.glmnet.3=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,DF,showPlots = FALSE)
+impGLMNET_ext.3=coda.glmnet.3$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.3],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.3=c(length(impGLMNET_ext.3),Sep(HC))
+```
+
+With 3 replicates, `r glmnet.ext.3[1]` significant taxa are found, perfectly separating the two groups, with a separation of `r round(glmnet.ext.3[2],2)`. 
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.3.T0=Indicador(coda.glmnet.3$taxa.num[coda.glmnet.3$`log-contrast coefficients`>0]),
+glmnet_sign.ext.3.T1=Indicador(coda.glmnet.3$taxa.num[coda.glmnet.3$`log-contrast coefficients`<0]))
+```
+
+
+```{r}
+# 5 replicates
+set.seed(4843)
+M=5
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(repls$CAU_T0_1,repls$CAU_T0_2,repls$CAU_T0_3,repls$CAU_T1_1,repls$CAU_T1_2,repls$CAU_T1_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CAU_T0_1",1:M,sep="_"),
+  paste("CAU_T0_2",1:M,sep="_"),
+  paste("CAU_T0_3",1:M,sep="_"),
+  paste("CAU_T1_1",1:M,sep="_"),
+  paste("CAU_T1_2",1:M,sep="_"),
+  paste("CAU_T1_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CAU_T0", 3*M),rep("CAU_T1", 3*M),rep("CAU_T0", 3),rep("CAU_T1", 3)))
+colors_ext=c("blue","green")[Type_ext]
+```
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+saveRDS(LogRat_mostres, file="LogRat_mostres_CAU_T0T1_5copies.RData")
+```
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CAU_T0T1_5copies.RData")
+coda.glmnet.5=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,DF,showPlots = FALSE)
+impGLMNET_ext.5=coda.glmnet.5$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.5],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.5=c(length(impGLMNET_ext.5),Sep(HC))
+```
+
+With 5 replicates, `r glmnet.ext.5[1]` significant taxa are found, perfectly separating the two groups, with a separation of `r round(glmnet.ext.5[2],2)`. 
+
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.5.T0=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.5$`log-contrast coefficients`>0]),
+glmnet_sign.ext.5.T1=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.5$`log-contrast coefficients`<0]))
+```
+
+
+```{r}
+# 10 replicates
+set.seed(4843)
+M=10
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(repls$CAU_T0_1,repls$CAU_T0_2,repls$CAU_T0_3,repls$CAU_T1_1,repls$CAU_T1_2,repls$CAU_T1_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CAU_T0_1",1:M,sep="_"),
+  paste("CAU_T0_2",1:M,sep="_"),
+  paste("CAU_T0_3",1:M,sep="_"),
+  paste("CAU_T1_1",1:M,sep="_"),
+  paste("CAU_T1_2",1:M,sep="_"),
+  paste("CAU_T1_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CAU_T0", 3*M),rep("CAU_T1", 3*M),rep("CAU_T0", 3),rep("CAU_T1", 3)))
+colors_ext=c("blue","green")[Type_ext]
+```
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+saveRDS(LogRat_mostres, file="LogRat_mostres_CAU_T0T1_10copies.RData")
+```
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CAU_T0T1_10copies.RData")
+coda.glmnet.10=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,DF,showPlots = FALSE)
+impGLMNET_ext.10=coda.glmnet.10$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.10],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.10=c(length(impGLMNET_ext.10),Sep(HC))
+```
+
+With 10 replicates, `r glmnet.ext.10[1]` significant taxa are found, but they do not classify well the samples.  
+
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.10.T0=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.10$`log-contrast coefficients`>0]),
+glmnet_sign.ext.10.T1=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.10$`log-contrast coefficients`<0]))
+```
+
+
+
+#### OTUs significant according to ALDeX
+
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1717772151
+initial_seed %% 10000
+# [1] 2151
+```
+
+
+```{r,eval=FALSE}
+set.seed(2151)
+repl_kw=aldexCesc.clr(t(DF), conds=Type, mc.samples=1000, verbose=FALSE)
+aldex_kw=aldex.kw(repl_kw, verbose=FALSE)
+#
+saveRDS(aldex_kw, file="aldex_kw_CAU_T0T1.RData")
+```
+
+
+```{r}
+p.valores_kw=readRDS("aldex_kw_CAU_T0T1.RData") 
+```
+
+```{r}
+length(p.valores_kw[p.valores_kw[,1]<0.05,2])
+```
+
+There are no taxa with a p-value < 0.05, even without adjustment.  
+
+
+
+### Simper 
+
+The significant taxa identified by `simper` do not classify the samples well:  
+
+```{r}
+DF.prop=DF.0.original/rowSums(DF.0.original)
+SMP.prop=simper(DF.prop,group=Type)
+indexos_SMP=SMP.prop$CAU_T0_CAU_T1$ord[which(SMP.prop$CAU_T0_CAU_T1$cusum<=0.7)]
+OTUs_SMP=sort(attr(SMP.prop$CAU_T0_CAU_T1$cusum[which(SMP.prop$CAU_T0_CAU_T1$cusum<=0.7)],"names"))
+OTUs_SMP.good=setdiff(OTUs_SMP,Unics$OTUs)
+HC=ClusterHC(DF[,OTUs_SMP.good],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+```
+
+
+```{r}
+Significant=cbind(Significant,
+t(DF.prop))
+```
+
+
+
+#### Summary
+
+
+```{r}
+write.csv2(Significant,"OTU_Significativos_CAU_T0T1.csv",row.names=FALSE)
+```
+
+
+```{r}
+Resultados=rbind(
+LR.max,
+glmnet.ext.3,
+glmnet.ext.5,
+glmnet.ext.10
+)
+row.names(Resultados)=c(
+"LR",
+"glmnet.ext.3",
+"glmnet.ext.5",
+"glmnet.ext.10")
+colnames(Resultados)=c("Size","Separation")
+```
+  
+```{r,fig.width=10, out.width="50%"} 
+par(opar)
+fit = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),3],cv=TRUE)
+fit.low = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),4],cv=TRUE)
+fit.up = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xlim=c(0,650),xaxp=c(0,650,13),ylim=c(0,max(Resultados[,2])+0.1))
+
+
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+points(Resultados,col="blue",type="h")
+points(Resultados,col="blue",pch=20)
+text(Resultados[,1],Resultados[,2]+0.01,col="blue",labels=row.names(Resultados),cex=0.75)
+```
+
+
+
+
+We intersect the OTUs identified as significant according to LR and `coda_glmnet` with 3 replicates 
+
+```{r}
+Significant.capat=Significant[,c(1,2,3,4,5)]
+Significant.capat=cbind(Significant.capat,Cuánto=rowSums(Significant.capat[,3:dim(Significant.capat)[2]]))
+Significant.capat=Significant.capat[Significant.capat$Cuánto==2,]
+```
+
+
+```{r}
+Significant.capat[,1:2]%>%
+  kbl() %>%
+  kable_styling() 
+```
+
+A single OTU. The same happens with 5 replicates:
+
+
+```{r}
+Significant.capat=Significant[,c(1,2,3,6,7)]
+Significant.capat=cbind(Significant.capat,Cuánto=rowSums(Significant.capat[,3:dim(Significant.capat)[2]]))
+Significant.capat=Significant.capat[Significant.capat$Cuánto==2,]
+
+Significant.capat[,1:2]%>%
+  kbl() %>%
+  kable_styling() 
+```
+
+
+
+
+
+```{r}
+Resultados %>%
+  kbl() %>%
+  kable_styling()
+```
+
+### CYM T0 vs CYM T1
+
+
+
+
+```{r}
+tax_otu=as.data.frame(read_excel("TablaOTUs.xlsx"))[13:24,]
+
+Samples=tax_otu$ID 
+taxa=colnames(tax_otu[,3:dim(tax_otu)[2]])
+OTUs=paste("OTU",1:(dim(tax_otu)[2]-2),sep="")
+
+DF.0=tax_otu[,-c(1,2)]
+row.names(DF.0)=Samples
+colnames(DF.0)=OTUs
+
+taxa.original=taxa
+DF.0.original=DF.0
+n.OTUs.original=dim(DF.0)[2]
+
+Miseria=as.vector(which(colSums(DF.0[1:6,])<=3))
+DF.0=DF.0[,-Miseria]
+taxa=taxa[-Miseria]
+OTUs=OTUs[-Miseria]
+
+hit=function(x){min(c(x,1))}
+DF.0.hits=as.matrix(DF.0)
+DF.0.hits[]=vapply(DF.0.hits, hit, numeric(1))
+
+Unics=data.frame(
+Sample=rep(NA,length(which(colSums(DF.0.hits)==1))), OTUs=names(colSums(DF.0)[which(colSums(DF.0.hits)==1)]), Reads=colSums(DF.0)[which(colSums(DF.0.hits)==1)],
+            Proportions=rep(0,length(which(colSums(DF.0.hits)==1)))  
+)
+for (i in 1:length(Unics$OTUs)){
+ii=which(DF.0.hits[,Unics$OTUs[i]]==1)  
+Unics$Proportions[i]=DF.0[ii,Unics$OTUs[i]]/sum(DF.0[ii,])
+Unics$Sample[i]=Samples[ii]}
+Unics.Freqs=Unics[Unics$Proportions>=0.05/100,]
+row.names(Unics.Freqs)=NULL
+
+DF.0=DF.0[,-which(colSums(DF.0.hits)==1)]
+taxa=taxa[-which(colSums(DF.0.hits)==1)]
+OTUs=OTUs[-which(colSums(DF.0.hits)==1)]
+
+row.names(DF.0)=Samples
+
+DF=zCompositions::cmultRepl(DF.0,method="GBM",output="p-counts",suppress.print=TRUE,z.warning=0.99)
+```
+
+```{r}
+DF=DF[1:6,]
+DF.0=DF.0[1:6,]
+DF.0.original=DF.0.original[1:6 ,]
+
+Type=as.factor(c(rep("CYM_T0", 3),rep("CYM_T1", 3)))
+colors=c("blue","green")[Type]
+```
+
+
+
+After removing OTUs with 2 or fewer reads across the samples and those appearing in only one of these samples, `r length(taxa)` taxa remain.  
+
+The OTUs removed at this step that represent more than 0.05% of the sample in which they appear are:  
+
+```{r}
+Unics.Freqs[rev(order(Unics.Freqs$Proportions)),] %>%
+  kbl() %>%
+  kable_styling()
+```
+
+    
+
+
+```{r}
+rm(tax_otu)
+rm(DF.0.hits)
+rm(Miseria)
+rm(Unics.Freqs)
+```
+
+
+#### How different are the samples?  
+
+
+
+```{r}
+HC=ClusterHC(DF,Grups=Type,colores=colors)
+base=Sep(HC)
+```
+
+The two sample types are not initially separated.  
+
+We now examine the proportion of OTU subsets of reasonable size that classify them correctly.  
+
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1717668665
+initial_seed %% 10000
+# [1] 8665
+```
+
+```{r,eval=FALSE}
+set.seed(8665)
+Experimento=function(i)
+{
+  ii=sample(dim(DF)[2],i,rep=FALSE)
+  DFtemp=DF[,ii]
+  CC=ClusterHC(DFtemp,dendrograma=FALSE,barplot=FALSE, Grups=Type,colores=colors)
+  c(Encerts(CC$tabla,table(Type)),Sep(CC))
+}
+n=250
+F.SS=c()
+for (i in 10:650) #10
+  {
+  print(i)
+  EE=replicate(n,Experimento(i))
+  EE.2=EE[2,which(EE[1,]==0)]
+  if(length(which(EE[1,]==0))>0){
+XX=replicate(1000,mean(sample(EE.2,n,replace=TRUE)))
+  F.SS=rbind(F.SS, c(i,
+                     length(EE.2)/250,
+                      mean(EE.2),
+                      quantile(XX,0.025),
+                      quantile(XX,0.975)
+  ))}
+    else {
+    F.SS=rbind(F.SS, c(i,
+                     0,
+                      NA,
+                      NA,
+                      NA))
+  }
+  }
+colnames(F.SS)=c("n","Proportion","Avg. sep.","Q_0.025","Q_0.975")
+saveRDS(F.SS, file="Fraccio.Separadors.CYM.T0vsT1.RData")
+```
+
+```{r}
+F.SS=readRDS("Fraccio.Separadors.CYM.T0vsT1.RData")
+```
+
+
+
+The first plot shows, for each $n$ up to 500, the proportion of samples of size $n$ that perfectly classify CYM_T0 and CYM_T1 (black curve), along with the 95% Clopper–Pearson confidence interval for that proportion (red curves). We used *smoothing splines* to smooth the curves.  
+
+```{r}
+F.SS_prop.Q_0.025=epitools::binom.exact(F.SS[,2]*250,250)$lower
+F.SS_prop.Q_0.975=epitools::binom.exact(F.SS[,2]*250,250)$upper
+fit = smooth.spline(F.SS[,1],F.SS[,2],cv=TRUE)
+fit.low = smooth.spline(F.SS[,1],F.SS_prop.Q_0.025,cv=TRUE)
+fit.up = smooth.spline(F.SS[,1],F.SS_prop.Q_0.975,cv=TRUE)
+
+
+plot(F.SS[,1:2],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Proportion",main="Proportion of perfect classifiers",ylim=c(0,0.1),xlim=c(0,650),xaxp=c(0,650,13),yaxp=c(0,0.1,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+
+```
+
+
+The second plot shows, for each $n$ up to 600, the estimated mean separation obtained with a sample of size $n$ that perfectly classifies CYM_T0 and CYM_T1 (black curve), along with the 95% confidence interval of this mean separation obtained via bootstrap (red curve). 
+
+```{r}
+fit = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),3],cv=TRUE)
+fit.low = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),4],cv=TRUE)
+fit.up = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xlim=c(0,650),xaxp=c(0,650,13),yaxp=c(0,1.5,15))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+```
+  `
+
+#### Taxa with maximum relevant log-ratios  
+
+
+```{r,eval=FALSE}
+LRS=explore_logratios(DF,Type)
+saveRDS(LRS, file="LRS_CYM_T0T1.RData")
+```
+
+
+```{r}
+LRS=readRDS("LRS_CYM_T0T1.RData")
+
+assoc=rep(0,dim(DF)[2]-4)
+for (m in 5:dim(DF)[2]){
+    assoc[m-4]=sum(LRS$`association log-ratio with y`[1:m,1:m])/m^2
+}
+
+plot(5:dim(DF)[2],assoc,type="b",xlab="m",ylab="Average goodness of the m most relevant." ,pch=20,cex=0.5)
+```
+
+```{r}
+m=4+which.max(assoc)
+impLR=sort(as.numeric(LRS$`order of importance`[1:m]))
+
+HC=ClusterHC(DF[,impLR],barplot=FALSE,Grups=Type,colores=colors)
+LR.max=c(length(impLR),Sep(HC))
+```
+
+The maximum is attained at the set of `r LR.max[1]` most logratio-relevant taxa.  
+ They perfectly separate the two sample types. The separation between groups is `r round(LR.max[2],2)`. 
+
+```{r}
+Significant=data.frame(
+  OTUs=paste("OTU",1:n.OTUs.original,sep=""),
+  taxa=taxa.original,
+  Log_ratio.max=Indicador(impLR))
+```
+
+
+#### Taxa relevant for the bacterial signature (according to `coda_glmnet`)  
+
+
+```{r}
+coda.glmnet=coda_glmnet(DF,Type,showPlots = FALSE)
+coda.glmnet$`signature plot`
+```
+
+
+`coda_glmnet` does not find taxa with significant differences. We add random replicates. We test with 3, 5, and 10 replicates.  
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1]  1717709647
+initial_seed %% 10000
+# [1]  9647
+```
+
+
+```{r}
+# 3 replicates
+set.seed(9647)
+M=3
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(repls$CYM_T0_1,repls$CYM_T0_2,repls$CYM_T0_3,repls$CYM_T1_1,repls$CYM_T1_2,repls$CYM_T1_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CYM_T0_1",1:M,sep="_"),
+  paste("CYM_T0_2",1:M,sep="_"),
+  paste("CYM_T0_3",1:M,sep="_"),
+  paste("CYM_T1_1",1:M,sep="_"),
+  paste("CYM_T1_2",1:M,sep="_"),
+  paste("CYM_T1_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CYM_T0", 3*M),rep("CYM_T1", 3*M),rep("CYM_T0", 3),rep("CYM_T1", 3)))
+colors_ext=c("blue","green")[Type_ext]
+```
+
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+saveRDS(LogRat_mostres, file="LogRat_mostres_CYM_T0T1_3copies.RData")
+```
+
+
+
+
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CYM_T0T1_3copies.RData")
+coda.glmnet.3=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,DF,showPlots = FALSE)
+impGLMNET_ext.3=coda.glmnet.3$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.3],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.3=c(length(impGLMNET_ext.3),Sep(HC))
+```
+
+With 3 replicates, `r glmnet.ext.3[1]` significant taxa are found, perfectly separating the two groups, with a separation of `r round(glmnet.ext.3[2],2)`. 
+
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.3.T0=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.5$`log-contrast coefficients`>0]),
+glmnet_sign.ext.3.T1=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.5$`log-contrast coefficients`<0]))
+```
+
+
+
+
+
+
+```{r}
+# 5 replicates
+set.seed(9647)
+M=5
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(repls$CYM_T0_1,repls$CYM_T0_2,repls$CYM_T0_3,repls$CYM_T1_1,repls$CYM_T1_2,repls$CYM_T1_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CYM_T0_1",1:M,sep="_"),
+  paste("CYM_T0_2",1:M,sep="_"),
+  paste("CYM_T0_3",1:M,sep="_"),
+  paste("CYM_T1_1",1:M,sep="_"),
+  paste("CYM_T1_2",1:M,sep="_"),
+  paste("CYM_T1_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CYM_T0", 3*M),rep("CYM_T1", 3*M),rep("CYM_T0", 3),rep("CYM_T1", 3)))
+colors_ext=c("blue","green")[Type_ext]
+```
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+saveRDS(LogRat_mostres, file="LogRat_mostres_CYM_T0T1_5copies.RData")
+```
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CYM_T0T1_5copies.RData")
+coda.glmnet.5=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,DF,showPlots = FALSE)
+impGLMNET_ext.5=coda.glmnet.5$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.5],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.5=c(length(impGLMNET_ext.5),Sep(HC))
+```
+
+With 5 replicates, `r glmnet.ext.5[1]` significant taxa are found, perfectly separating the two groups, with a separation of `r round(glmnet.ext.5[2],2)`. 
+
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.5.T0=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.5$`log-contrast coefficients`>0]),
+glmnet_sign.ext.5.T1=Indicador(coda.glmnet.5$taxa.num[coda.glmnet.5$`log-contrast coefficients`<0]))
+```
+
+
+```{r}
+# 10 replicates
+set.seed(9647)
+M=10
+repls=aldexCesc.clr(t(DF), conds=Type, mc.samples=M)@analysisData
+repls=t(cbind(repls$CYM_T0_1,repls$CYM_T0_2,repls$CYM_T0_3,repls$CYM_T1_1,repls$CYM_T1_2,repls$CYM_T1_3))
+attr(repls,"dimnames")[[2]]=NULL
+colnames(repls)=colnames(DF)
+row.names(repls)=c(paste("CYM_T0_1",1:M,sep="_"),
+  paste("CYM_T0_2",1:M,sep="_"),
+  paste("CYM_T0_3",1:M,sep="_"),
+  paste("CYM_T1_1",1:M,sep="_"),
+  paste("CYM_T1_2",1:M,sep="_"),
+  paste("CYM_T1_3",1:M,sep="_"))
+mostres=rbind(repls,easyCODA::CLR(DF)$LR)
+rm(repls)
+Type_ext=as.factor(c(rep("CYM_T0", 3*M),rep("CYM_T1", 3*M),rep("CYM_T0", 3),rep("CYM_T1", 3)))
+colors_ext=c("blue","green")[Type_ext]
+```
+
+
+```{r,eval=FALSE}
+LogRat_mostres=logratios_matrix_clr(mostres)
+LogRat_mostres=list(LogRat_mostres[[1]],LogRat_mostres[[2]])
+saveRDS(LogRat_mostres, file="LogRat_mostres_CYM_T0T1_10copies.RData")
+```
+
+```{r}
+LogRat_mostres=readRDS("LogRat_mostres_CYM_T0T1_10copies.RData")
+coda.glmnet.10=coda_glmnet_lr_bin(LogRat_mostres,Type_ext,DF,showPlots = FALSE)
+impGLMNET_ext.10=coda.glmnet.10$taxa.num
+HC=ClusterHC(DF[,impGLMNET_ext.10],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+glmnet.ext.10=c(length(impGLMNET_ext.10),Sep(HC))
+```
+
+With 10 replicates, `r glmnet.ext.10[1]` significant taxa are found, perfectly separating the two groups, with a separation of `r round(glmnet.ext.10[2],2)`. 
+
+
+```{r}
+Significant=cbind(Significant,
+glmnet_sign.ext.10.T0=Indicador(coda.glmnet.10$taxa.num[coda.glmnet.10$`log-contrast coefficients`>0]),
+glmnet_sign.ext.10.T1=Indicador(coda.glmnet.10$taxa.num[coda.glmnet.10$`log-contrast coefficients`<0]))
+```
+
+
+
+
+
+#### OTUs significant according to ALDeX
+
+
+```{r,eval=FALSE}
+> initial_seed=as.integer(Sys.time())
+> print (initial_seed)
+# [1] 1717738742
+initial_seed %% 10000
+# [1] 8742
+```
+
+
+```{r,eval=FALSE}
+set.seed(8742)
+repl_kw=aldexCesc.clr(t(DF), conds=Type, mc.samples=1000, verbose=FALSE)
+aldex_kw=aldex.kw(repl_kw, verbose=FALSE)
+#
+repl_glm=aldexCesc.clr(t(DF), conds=model.matrix(~Type,data.frame(Type)), mc.samples=1000, verbose=FALSE)
+aldex_glm=aldex.glm(repl_glm, model.matrix(~Type,data.frame(Type)))
+#'
+saveRDS(aldex_kw, file="aldex_kw_CYM_T0T1.RData")
+saveRDS(aldex_glm, file="aldex_glm_CYM_T0T1.RData")
+```
+
+
+```{r}
+p.valores_kw=readRDS("aldex_kw_CYM_T0T1.RData") 
+```
+
+```{r}
+length(p.valores_kw[p.valores_kw[,2]<0.05,2])
+length(p.valores_kw[p.valores_kw[,4]<0.05,2])
+length(p.valores_kw[p.valores_kw[,4]<0.01,4])
+```
+
+There are no OTUs with an adjusted Kruskal–Wallis p-value < 0.05. There are `r length(p.valores_kw[p.valores_kw[,1]<0.05,2])` OTUs with an unadjusted p-value < 0.05, but they do not separate the samples well:  
+
+```{r}
+sep.kw.noadjust.0.05=QQ.HC.noadjust(p.valores_kw,DF,Type,q=0.05,1,BP=FALSE)
+```
+
+
+
+
+
+```{r}
+Significant=cbind(Significant,
+Aldex.kw.noadjust.0.05=Indicador(sep.kw.noadjust.0.05))
+```
+
+
+#### Simper 
+
+The significant taxa identified by `simper` do not classify the samples well:  
+
+```{r}
+DF.prop=DF.0.original/rowSums(DF.0.original)
+SMP.prop=simper(DF.prop,group=Type)
+indexos_SMP=SMP.prop$CYM_T0_CYM_T1$ord[which(SMP.prop$CYM_T0_CYM_T1$cusum<=0.7)]
+OTUs_SMP=sort(attr(SMP.prop$CYM_T0_CYM_T1$cusum[which(SMP.prop$CYM_T0_CYM_T1$cusum<=0.7)],"names"))
+OTUs_SMP.good=setdiff(OTUs_SMP,Unics$OTUs)
+HC=ClusterHC(DF[,OTUs_SMP.good],dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+```
+
+
+
+
+
+
+
+```{r}
+Significant=cbind(Significant,
+t(DF.prop))
+```
+
+
+#### Summary
+
+
+
+
+```{r,include=TRUE}
+write.csv2(Significant,"OTU_Significativos_CYM_T0T1.csv",row.names=FALSE)
+```
+
+
+```{r}
+Resultados=rbind(
+LR.max,
+glmnet.ext.3,
+glmnet.ext.5,
+glmnet.ext.10)
+row.names(Resultados)=c(
+"LR",
+"glmnet.ext.3",
+"glmnet.ext.5",
+"glmnet.ext.10"
+)
+colnames(Resultados)=c("Size","Separation")
+```
+  
+```{r,fig.width=10, out.width="50%"} 
+par(opar)
+fit = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),3],cv=TRUE)
+fit.low = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),4],cv=TRUE)
+fit.up = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",xlim=c(0,650),xaxp=c(0,650,13),ylim=c(0,max(Resultados[,2])+0.1))
+
+
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+points(Resultados,col="blue",type="h")
+points(Resultados,col="blue",pch=20)
+text(Resultados[,1],Resultados[,2]+0.01,col="blue",labels=row.names(Resultados),cex=0.75)
+```
+
+
+
+
+We intersect the OTUs identified as significant according to LR and `coda_glmnet` with 3 replicates.
+
+```{r}
+Significant.capat=Significant[,c(1,2,3,4,5)]
+Significant.capat=cbind(Significant.capat,Cuánto=rowSums(Significant.capat[,3:dim(Significant.capat)[2]]))
+Significant.capat=Significant.capat[Significant.capat$Cuánto==2,]
+```
+
+
+
+```{r,eval=FALSE}
+DF.Imp=DF[,Significant.capat[,1]]
+HC=ClusterHC(DF.Imp,dendrograma=TRUE,barplot=FALSE,Grups=Type,colores=colors)
+```
+
+There are `r dim(Significant.capat)[1]` taxa. They are:
+
+
+```{r}
+Significant.capat[,1:2]%>%
+  kbl() %>%
+  kable_styling() 
+```
+
+
+
+The separation between groups is `r round(Sep(HC),2)`.  
+
+We update the plot with the separations:  
+
+```{r,eval=FALSE}
+intersección=c(dim(Significant.capat)[1],Sep(HC))
+Resultados=rbind(Resultados,intersección)
+row.names(Resultados)=c(
+"LR",
+"glmnet.ext.3",
+"glmnet.ext.5",
+"glmnet.ext.10",
+"intersection")
+colnames(Resultados)=c("Size","Separation")
+```
+  
+```{r,fig.width=10, out.width="50%",eval=FALSE} 
+par(opar)
+fit = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),3],cv=TRUE)
+fit.low = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),4],cv=TRUE)
+fit.up = smooth.spline(F.SS[!is.na(F.SS[,3]),1],F.SS[!is.na(F.SS[,3]),5],cv=TRUE)
+
+plot(F.SS[,c(1,3)],pch=20,cex=0.25,col="darkgrey",xlab="n",ylab="Separation",main="Average separation for perfect classifiers",ylim=c(0,2.25),xlim=c(0,250),xaxp=c(0,250,10),yaxp=c(0,2.5,10))
+lines(fit,col="black",lwd=1)
+lines(fit.low,col="red",lwd=1)
+lines(fit.up,col="red",lwd=1)
+points(Resultados,col="blue",type="h")
+points(Resultados,col="blue",pch=20)
+text(Resultados[,1],Resultados[,2]+0.02,col="blue",labels=row.names(Resultados),cex=0.75)
+abline(h=2.47,col="green")
+text(20,2.6,col="green",labels="Global",cex=0.75)
+```
+
+
+```{r,eval=FALSE}
+Resultados %>%
+  kbl() %>%
+  kable_styling()
+```
+
