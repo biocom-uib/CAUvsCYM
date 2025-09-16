@@ -13,6 +13,8 @@ Some of the calculations in this project are very time-consuming. To avoid long 
 
 These data files are located in the `Auxiliary_Data` folder. **Before knitting the `.Rmd` file**, make sure to move them to the **same directory level as the `.Rmd` file**.
 
+---
+
 ## Reproducibility Instructions
 
 1. Clone this repository.
