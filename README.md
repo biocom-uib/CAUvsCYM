@@ -13,3 +13,8 @@ Some of the calculations in this project are very time-consuming. To avoid long 
 
 These data files are located in the `Auxiliary_Data` folder. **Before knitting the `.Rmd` file**, make sure to move them to the **same directory level as the `.Rmd` file**.
 
+## Reproducibility Instructions
+
+1. Clone this repository.
+2. Move the contents of `Auxiliary_Data` to the same folder as `Additional-File-2.Rmd`.
+3. Open `Additional-File-2.Rmd` in RStudio and knit.
