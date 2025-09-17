@@ -2,21 +2,22 @@
 title: "Shifts in microbial communities driven by the succession of seagrasses to benthic macroalgae may exacerbate heatwave effects in eutrophicated-coastal lagoons: Statistical analysis"
 author: "E. Rubio-Portillo, F. Rosselló, B. Aldeguer-Riquelme, *et al*"
 output:
-  pdf_document:
-    toc: true
-    toc_depth: 2
   bookdown::html_document2:
     toc: true
     toc_depth: 2
     toc_float: true
     toc_title: "Contents"
     embed-resources: true   
+  pdf_document:
+    toc: true
+    toc_depth: 2
 date: "`r format(Sys.Date())`"
 embed-resources: true
 ---
 
 This document contains all statistical analyses conducted for the manuscript.  
-All data to reproduce analysis can be found here:  https://github.com/biocom-uib/CAUvsCYM 
+All data to reproduce analysis can be found here:  https://github.com/biocom-uib/CAUvsCYM. This document uses precomputed data for heavy calculations. See README for details.
+
 
 ## Setup
 
