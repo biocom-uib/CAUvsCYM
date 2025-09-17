@@ -15,8 +15,20 @@ These data files are located in the `Auxiliary_Data` folder. **Before knitting t
 
 ---
 
+## Repository Structure 
+
+.
+├── Auxiliary_Data/ # Precomputed data files, to avoid long compilation times
+├── Additional-File-2.Rmd # Main RMarkdown file
+├── funcionsCODAMETACIRCLE.R # Script with functions used by Additional-File-2.Rmd 
+├── Input_Data/ # Data obtained in the experiments
+├── README.md # This file
+└── Main_Results/ # Output data tables produced by the statistical analysis
+
+---
+
 ## Reproducibility Instructions
 
 1. Clone this repository.
-2. Move the contents of `Auxiliary_Data` to the same folder as `Additional-File-2.Rmd`.
+2. Move the contents of `Input_Data` and `Auxiliary_Data` to the same folder as `Additional-File-2.Rmd` and `funcionsCODAMETACIRCLE.R`.
 3. Open `Additional-File-2.Rmd` in RStudio and knit.
