@@ -17,12 +17,12 @@ These data files are located in the `Auxiliary_Data` folder. **Before knitting t
 
 ## Repository Structure 
 
-* Auxiliary_Data/ # Precomputed data files, to avoid long compilation times
-* Additional-File-2.Rmd # Main RMarkdown file
-* funcionsCODAMETACIRCLE.R # Script with functions used by Additional-File-2.Rmd 
-* Input_Data/ # Data obtained in the experiments
-* Main_Results/ # Output data tables produced by the statistical analysis
-* README.md # This file
+* `Auxiliary_Data/` Precomputed data files, to avoid long compilation times
+* `Additional-File-2.Rmd` Main RMarkdown file
+* `funcionsCODAMETACIRCLE.R` Script with functions used by Additional-File-2.Rmd 
+* `Input_Data/` Data obtained in the experiments
+* `Main_Results/` Output data tables produced by the statistical analysis
+* `README.md` This file
 
 ---
 
