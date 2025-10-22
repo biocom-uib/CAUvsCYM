@@ -90,7 +90,7 @@ set_flextable_defaults(
 ## Statistical analysis of biochemical and cellular parameters
 
 
-### Sulfur concentrations
+### Sulfide concentrations
 
 
 ```{r}
@@ -107,10 +107,10 @@ datos$Time<-factor(datos$Time, levels = c("T0", "T2"))
 df_summary <- datos %>%
   group_by(Time, Species, Treatment) %>%
   summarise(
-    mean_sulfur = mean(Sulfur, na.rm = TRUE),
-    sd_sulfur   = sd(Sulfur, na.rm = TRUE),
+    mean_sulfide = mean(Sulfur, na.rm = TRUE),
+    sd_sulfide   = sd(Sulfur, na.rm = TRUE),
     n           = n(),
-    se_sulfur   = sd_sulfur / sqrt(n)
+    se_sulfide   = sd_sulfide / sqrt(n)
   ) %>%
   ungroup()
 
@@ -124,28 +124,28 @@ p_a<- ggplot() +
               size = 1.2) +
   geom_line(data = df_summary,
             aes(x = Time, 
-                y = mean_sulfur, 
+                y = mean_sulfide, 
                 color = Species, 
                 group = interaction(Species, Treatment),
                 linetype = Treatment),
             size = 1) +
   geom_point(data = df_summary,
              aes(x = Time, 
-                 y = mean_sulfur, 
+                 y = mean_sulfide, 
                  color = Species, 
                  shape = Treatment),
              size = 3) +
   geom_errorbar(data = df_summary,
                 aes(x = Time, 
-                    ymin = mean_sulfur - se_sulfur,
-                    ymax = mean_sulfur + se_sulfur,
+                    ymin = mean_sulfide - se_sulfide,
+                    ymax = mean_sulfide + se_sulfide,
                     color = Species),
                 width = 0.1,
                 size = 1.2) +
   scale_color_manual(values = c("CAU" = "#008ae6", "CYM" = "#ff751a")) +
   labs(
     x = "Time",
-    y = expression(paste("Sulfur (", mu, "M)")),
+    y = expression(paste("Sulfide (", mu, "M)")),
     color = "Species",
     shape = "Treatment",
     linetype = "Treatment"
@@ -164,18 +164,18 @@ p_a<- ggplot() +
 p_a
 ```
 
-The figure shows sulfur concentrations (mean ± SE) at baseline (T0) and after exposure (T2) for sediments colonized by Caulerpa (blue) and Cymodocea (orange) under control (solid lines) and heatwave (dashed lines) conditions. In both species, sulfur levels increased from T0 to T2. The increase was evident under both control and heatwave treatments in Caulerpa, whereas in Cymodocea the rise was more pronounced under heatwave conditions. Individual data points (faded symbols) illustrate the variability within groups.
+The figure shows sulfide concentrations (mean ± SE) at baseline (T0) and after exposure (T2) for sediments colonized by Caulerpa (blue) and Cymodocea (orange) under control (solid lines) and heatwave (dashed lines) conditions. In both species, sulfide levels increased from T0 to T2. The increase was evident under both control and heatwave treatments in Caulerpa, whereas in Cymodocea the rise was more pronounced under heatwave conditions. Individual data points (faded symbols) illustrate the variability within groups.
 
 
-To evaluate changes in sediment sulfur concentration, we applied a nonparametric testing framework. First, we examined within-group temporal changes (T0 vs T2) separately for each Species × Treatment using Wilcoxon tests, with p-values adjusted by the Benjamini–Hochberg procedure. We then compared treatments at T2 (Control vs Heatwave) within each species to assess whether heatwave exposure altered sulfur at the final time point. This two-step approach provides both temporal (within-group) and treatment-level (between-group) perspectives on sulfur dynamics.
+To evaluate changes in sediment sulfide concentration, we applied a nonparametric testing framework. First, we examined within-group temporal changes (T0 vs T2) separately for each Species × Treatment using Wilcoxon tests, with p-values adjusted by the Benjamini–Hochberg procedure. We then compared treatments at T2 (Control vs Heatwave) within each species to assess whether heatwave exposure altered sulfide at the final time point. This two-step approach provides both temporal (within-group) and treatment-level (between-group) perspectives on sulfide dynamics.
 
 We first report group medians at T0 and T2 and their difference (Δ = T2 − T0) for each Species × Treatment. These summaries are descriptive and motivate the subsequent nonparametric tests.
 
 ```{r}
 medians <- datos %>%
   group_by(Species, Treatment, Time) %>%
-  summarise(median_sulfur = median(Sulfur, na.rm = TRUE), n = dplyr::n(), .groups = "drop") %>%
-  tidyr::pivot_wider(names_from = Time, values_from = median_sulfur) %>%
+  summarise(median_sulfide = median(Sulfur, na.rm = TRUE), n = dplyr::n(), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = Time, values_from = median_sulfide) %>%
   # Opción A: con comillas invertidas (recomendado)
   mutate(delta_median = `T2` - `T0`)
   # Opción B (alternativa robusta):
@@ -210,14 +210,14 @@ knitr::kable(time_tests, digits = 3,
 ```
 
 
-These outputs provide a basis for the statement that sulfur increased in both species and that the rise was more pronounced under heatwave conditions—particularly for Cymodocea at T2.
+These outputs provide a basis for the statement that sulfide increased in both species and that the rise was more pronounced under heatwave conditions—particularly for Cymodocea at T2.
 
 
 #### Difference-in-Differences (DiD) models
 
-To complement the nonparametric analyses and jointly assess the effects of time and treatment, a difference-in-differences (DiD) model was applied separately for each species. This approach makes it possible to test whether the temporal change in sulfur differs significantly between control and heatwave conditions, while accounting for the main effects of treatment and time. In particular, the interaction term (Treatment × Time) captures the differential effect attributable to the heatwave at the final time point (TF), thus providing a direct measure of the magnitude of the treatment impact in each species.
+To complement the nonparametric analyses and jointly assess the effects of time and treatment, a difference-in-differences (DiD) model was applied separately for each species. This approach makes it possible to test whether the temporal change in sulfide differs significantly between control and heatwave conditions, while accounting for the main effects of treatment and time. In particular, the interaction term (Treatment × Time) captures the differential effect attributable to the heatwave at the final time point (TF), thus providing a direct measure of the magnitude of the treatment impact in each species.
 
-*Cymodocea — sulfur analysis*
+*Cymodocea — sulfide analysis*
 
 ```{r}
 cy <- datos %>%
@@ -231,9 +231,9 @@ summary(fit_cy)
 ```
 
 
-In Cymodocea, sulfur concentrations increased significantly from T0 to T2 under control conditions (Time effect: p = 0.048). The DiD model further estimated an additional increase under heatwave exposure at T2 (interaction coefficient = 129.7), consistent with the descriptive pattern of a more pronounced rise under heatwave conditions. However, this differential effect was not statistically significant (p = 0.26), indicating that while the data suggest a stronger increase in Cymodocea under heatwave exposure, statistical support for this effect remains moderate.
+In Cymodocea, sulfide concentrations increased significantly from T0 to T2 under control conditions (Time effect: p = 0.048). The DiD model further estimated an additional increase under heatwave exposure at T2 (interaction coefficient = 129.7), consistent with the descriptive pattern of a more pronounced rise under heatwave conditions. However, this differential effect was not statistically significant (p = 0.26), indicating that while the data suggest a stronger increase in Cymodocea under heatwave exposure, statistical support for this effect remains moderate.
 
-*Caulerpa — sulfur analysis*
+*Caulerpa — sulfide analysis*
 
 ```{r}
 ca <- datos %>%
@@ -246,7 +246,7 @@ fit_ca <- lm(Sulfur ~ Treatment + Time + Treatment:Time, data = ca)
 summary(fit_ca)
 ```
 
-In Caulerpa, sulfur concentrations increased significantly from T0 to T2 under control conditions (Time effect: p < 0.001). The DiD model further estimated an additional increase under heatwave exposure at T2 (interaction coefficient = 114.9), consistent with the descriptive pattern of greater accumulation under heatwave conditions. However, this differential effect was not statistically significant (p = 0.17), indicating that while sulfur accumulation clearly occurred over time, the evidence for an extra increase driven by heatwave exposure remains moderate.
+In Caulerpa, sulfide concentrations increased significantly from T0 to T2 under control conditions (Time effect: p < 0.001). The DiD model further estimated an additional increase under heatwave exposure at T2 (interaction coefficient = 114.9), consistent with the descriptive pattern of greater accumulation under heatwave conditions. However, this differential effect was not statistically significant (p = 0.17), indicating that while sulfide accumulation clearly occurred over time, the evidence for an extra increase driven by heatwave exposure remains moderate.
 
 
 ### Redox potential
