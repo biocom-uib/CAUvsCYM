@@ -1,0 +1,2 @@
+"comparison","distance","pearson_correlation","spearman_correlation","mantel_r","mantel_p","mean_absolute_difference","median_absolute_difference","max_absolute_difference","top_k","top_otu_overlap","top_otu_jaccard"
+"GBM_vs_CZM","Aitchison",0.986,0.976,0.976,0.001,4.301,4.284,10.218,100,78,0.639

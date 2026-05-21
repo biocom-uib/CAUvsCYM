@@ -1,0 +1,4 @@
+"step","samples","taxa","cells","zeros","zero_fraction","zero_percent"
+"Before filtering",24,3086,74064,41217,0.5565,55.65
+"After removing OTUs with <= 2 total reads",24,2599,62376,30225,0.4846,48.46
+"After filtering, before imputation",24,2542,61008,28914,0.4739,47.39
