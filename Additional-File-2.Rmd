@@ -2,15 +2,15 @@
 title: "Shifts in microbial communities driven by the succession of seagrasses to benthic macroalgae may exacerbate heatwave effects in eutrophicated-coastal lagoons: Statistical analysis"
 author: "E. Rubio-Portillo, F. Rosselló, B. Aldeguer-Riquelme, *et al*"
 output:
-  pdf_document:
-    toc: true
-    toc_depth: 2
   bookdown::html_document2:
     toc: true
     toc_depth: 2
     toc_float: true
     toc_title: "Contents"
     embed-resources: true   
+  pdf_document:
+    toc: true
+    toc_depth: 2
 date: "`r format(Sys.Date())`"
 embed-resources: true
 ---
@@ -31,6 +31,8 @@ knitr::opts_chunk$set(
   message = FALSE, 
   warning = FALSE,
   hiline = TRUE,
+  dpi = 72,
+  fig.retina = 1,
   cache=TRUE
 )
 options(knitr.kable.NA = '')
@@ -68,14 +70,11 @@ library(ecolTest)
 library(factoextra)
 library(coda4microbiome)
 library(broom)
+library(flextable)
 source("funcionsCODAMETACIRCLE.R")
 
-
 opar=par()
-```
 
-```{r}
-library(flextable)
 set_flextable_defaults(
   font.family = "Arial", font.size = 10, 
   border.color = "gray", big.mark = "")
@@ -88,52 +87,52 @@ set_flextable_defaults(
 
 ## Statistical analysis of biochemical and cellular parameters
 
+Because samples collected at different time points came from different pots rather than repeated measurements of the same experimental units, temporal comparisons are reported as contrasts among independent pots sampled at each time point. Non-parametric pairwise comparisons were performed using Wilcoxon rank-sum tests. Whenever multiple pairwise comparisons were conducted across species, treatments or sampling times, p-values were adjusted using the Benjamini--Hochberg false discovery rate procedure, and significance was interpreted using adjusted p-values.
 
 ### Sulfide context
 
-
-```{r}
-#Data and factors 
+```{r sulfide-data}
+# Data and factors
 datos <- read_table("Sulfur_data_28ago25.txt")
-datos$Species<-as.factor(datos$Species)
-datos$Treatment<-as.factor(datos$Treatment)
-datos$Time<-factor(datos$Time, levels = c("T0", "T2"))
+datos$Species <- as.factor(datos$Species)
+datos$Treatment <- as.factor(datos$Treatment)
+datos$Time <- factor(datos$Time, levels = c("T0", "T2"))
 ```
 
-
-```{r}
-#Group summary for plotting 
+```{r sulfide-plot}
+# Group summary for plotting
 df_summary <- datos %>%
-  group_by(Time, Species, Treatment) %>%
-  summarise(
+  dplyr::group_by(Time, Species, Treatment) %>%
+  dplyr::summarise(
     mean_sulfide = mean(Sulfur, na.rm = TRUE),
     sd_sulfide   = sd(Sulfur, na.rm = TRUE),
-    n           = n(),
-    se_sulfide   = sd_sulfide / sqrt(n)
-  ) %>%
-  ungroup()
+    n            = n(),
+    se_sulfide   = sd_sulfide / sqrt(n),
+    .groups      = "drop"
+  )
 
-# --- Figure (as in the paper: means ± SE) ---
-p_a<- ggplot() +
-  geom_jitter(data = datos,
-              aes(x = Time, y = Sulfur, color = Species, 
-                  shape = Treatment),
-              width = 0.1,  
-              alpha = 0.4,
-              size = 1.2) +
-  geom_point(data = df_summary,
-             aes(x = Time, 
-                 y = mean_sulfide, 
-                 color = Species, 
-                 shape = Treatment),
-             size = 3) +
-  geom_errorbar(data = df_summary,
-                aes(x = Time, 
-                    ymin = mean_sulfide - se_sulfide,
-                    ymax = mean_sulfide + se_sulfide,
-                    color = Species),
-                width = 0.1,
-                size = 1.2) +
+p_a <- ggplot() +
+  geom_jitter(
+    data = datos,
+    aes(x = Time, y = Sulfur, color = Species, shape = Treatment),
+    width = 0.1,
+    alpha = 0.4,
+    size = 1.2
+  ) +
+  geom_point(
+    data = df_summary,
+    aes(x = Time, y = mean_sulfide, color = Species, shape = Treatment),
+    size = 3
+  ) +
+  geom_errorbar(
+    data = df_summary,
+    aes(x = Time,
+        ymin = mean_sulfide - se_sulfide,
+        ymax = mean_sulfide + se_sulfide,
+        color = Species),
+    width = 0.1,
+    size = 1.2
+  ) +
   scale_color_manual(values = c("CAU" = "#008ae6", "CYM" = "#ff751a")) +
   labs(
     x = "Time",
@@ -143,37 +142,39 @@ p_a<- ggplot() +
     linetype = "Treatment"
   ) +
   theme_minimal() +
-  theme(axis.title.x = element_text(face = "bold"),
-        axis.title.y = element_text(face = "bold"),
-        axis.text.x  = element_text(face = "bold"),
-        legend.title = element_text(face = "bold")
-        ) +
-  coord_cartesian(ylim = c(400, 1400)) +  
-  scale_y_continuous(
-    breaks = seq(400, 1400, by = 100)      
-  ) 
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    axis.text.x  = element_text(face = "bold"),
+    legend.title = element_text(face = "bold")
+  ) +
+  coord_cartesian(ylim = c(400, 1400)) +
+  scale_y_continuous(breaks = seq(400, 1400, by = 100))
 
 p_a
 ```
 
-The figure provides a descriptive overview of sulfide concentrations (mean ± SE) at baseline (T0) and after exposure (T2) for sediments colonized by Caulerpa (blue) and Cymodocea (orange) under control (solid lines) and heatwave (dashed lines) conditions. Visually, sulfide levels increased from T0 to T2 in both species. The increase was apparent under both control and heatwave treatments in Caulerpa, whereas in Cymodocea the rise appeared more pronounced under heatwave conditions. Individual data points (faded symbols) illustrate within-group variability.
+The figure provides a descriptive overview of sulfide concentrations (mean ± SE) at baseline (T0) and after exposure (T2) for sediments colonized by *Caulerpa* (blue) and *Cymodocea* (orange) under control and heatwave conditions. Individual data points illustrate within-group variability. Because different pots were sampled at T0 and T2, comparisons between sampling times represent contrasts among independent pots rather than repeated measurements of the same pots.
 
-To formally assess these visual patterns, we applied a nonparametric framework. We first report group medians at T0 and T2 and their difference ($\Delta = T2 - T0$) for each Species $\times$ Treatment as descriptive summaries. We then tested within-group temporal changes (T0 vs T2) separately for each Species $\times$ Treatment using Wilcoxon tests, with p-values adjusted using the Benjamini–Hochberg procedure. Finally, we compared treatments at T2 within each species to assess whether heatwave exposure altered sulfide concentrations at the final time point.
+We first report group medians at T0 and T2 and their difference ($\Delta = T2 - T0$) for each Species $\times$ Treatment as descriptive summaries.
 
-```{r}
+```{r sulfide-medians}
 medians <- datos %>%
-  group_by(Species, Treatment, Time) %>%
-  summarise(median_sulfide = median(Sulfur, na.rm = TRUE), n = dplyr::n(), .groups = "drop") %>%
+  dplyr::group_by(Species, Treatment, Time) %>%
+  dplyr::summarise(
+    median_sulfide = median(Sulfur, na.rm = TRUE),
+    n = dplyr::n(),
+    .groups = "drop"
+  ) %>%
   tidyr::pivot_wider(names_from = Time, values_from = median_sulfide) %>%
-  mutate(delta_median = `T2` - `T0`)
+  dplyr::mutate(delta_median = `T2` - `T0`)
 
 knitr::kable(medians, digits = 2, caption = "Medians by group and change (T2 - T0)")
-
 ```
 
-We then formally tested T0 vs T2 within each Species × Treatment using Wilcoxon rank–sum tests, controlling the false discovery rate with Benjamini–Hochberg adjustment. This step separates the inferential result from the descriptive trends shown in the figure.
+We then formally tested T0 vs T2 within each Species $\times$ Treatment using Wilcoxon rank-sum tests, controlling the false discovery rate with Benjamini--Hochberg adjustment.
 
-```{r}
+```{r sulfide-time-tests}
 time_tests <- datos %>%
   dplyr::group_by(Species, Treatment) %>%
   dplyr::summarise(
@@ -191,118 +192,141 @@ time_tests <- datos %>%
   ) %>%
   dplyr::mutate(p_adj = p.adjust(p, method = "BH"))
 
-knitr::kable(time_tests, digits = 3,
-             caption = "Wilcoxon (T0 vs T2) per Species × Treatment (BH-adjusted p)")
+knitr::kable(
+  time_tests,
+  digits = 3,
+  caption = "Wilcoxon rank-sum tests comparing T0 vs T2 per Species × Treatment (BH-adjusted p)"
+)
 ```
 
+Treatment differences at T2 were also compared within each species, with Benjamini--Hochberg adjustment across species-specific comparisons.
 
-Together, the descriptive summaries and Wilcoxon tests support the interpretation that sulfide increased over time in both species, while the heatwave-related increase appeared stronger in Cymodocea at T2. The DiD models below then evaluate whether that apparent treatment-related amplification is supported when time and treatment are modelled jointly.
+```{r sulfide-treatment-t2}
+sulfide_t2_bt <- datos %>%
+  dplyr::filter(Time == "T2") %>%
+  dplyr::group_by(Species) %>%
+  dplyr::summarise(
+    p = {
+      d <- dplyr::cur_data()
+      if (dplyr::n_distinct(d$Treatment) >= 2) {
+        suppressWarnings(stats::wilcox.test(Sulfur ~ Treatment, data = d, exact = FALSE)$p.value)
+      } else {
+        NA_real_
+      }
+    },
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(p_adj = p.adjust(p, method = "BH"))
 
+knitr::kable(
+  sulfide_t2_bt,
+  digits = 3,
+  caption = "Wilcoxon rank-sum tests comparing treatments at T2 by Species (BH-adjusted p)"
+)
+```
 
-#### Difference-in-Differences (DiD) models
+Overall, sulfide concentrations were higher in T2 samples than in T0 samples for several Species $\times$ Treatment groups, but statistical significance was interpreted using BH-adjusted p-values. The models below provide an exploratory summary of whether T0--T2 contrasts differed between control and heatwave conditions.
 
-To complement the nonparametric analyses and jointly assess the effects of time and treatment, a difference-in-differences (DiD) model was applied separately for each species. This approach makes it possible to test whether the temporal change in sulfide differs significantly between control and heatwave conditions, while accounting for the main effects of treatment and time. In particular, the interaction term (Treatment × Time) captures the differential effect attributable to the heatwave at the final time point (T2), thus providing a direct measure of the magnitude of the treatment impact in each species.
+#### Difference-in-differences-type models
+
+Heatwave effects were further explored using difference-in-differences-type models to assess whether T0--T2 contrasts differed between control and heatwave conditions. Because different pots were sampled at each time point, these models were interpreted as exploratory treatment $\times$ time interaction models rather than as formal longitudinal causal estimates. For each species, the response was modeled as a function of treatment, time, and their interaction.
 
 *Cymodocea — sulfide analysis*
 
-```{r}
-cy <- datos %>%
-  dplyr::filter(Species == "CYM")
-
+```{r sulfide-did-cym}
+cy <- datos %>% dplyr::filter(Species == "CYM")
 cy$Treatment <- factor(cy$Treatment, levels = c("Control", "HW"))
-cy$Time      <- factor(cy$Time,      levels = c("T0", "T2"))
+cy$Time <- factor(cy$Time, levels = c("T0", "T2"))
 
 fit_cy <- lm(Sulfur ~ Treatment + Time + Treatment:Time, data = cy)
 summary(fit_cy)
+knitr::kable(broom::tidy(fit_cy), digits = 3, caption = "Exploratory treatment × time model for sulfide in Cymodocea")
 ```
-
-
-In Cymodocea, sulfide concentrations increased significantly from T0 to T2 under control conditions (Time effect: p = 0.048). The DiD model further estimated an additional increase under heatwave exposure at T2 (interaction coefficient = 129.7), consistent with the descriptive pattern of a more pronounced rise under heatwave conditions. However, this differential effect was not statistically significant (p = 0.26), indicating that while the data suggest a stronger increase in Cymodocea under heatwave exposure, statistical support for this effect remains moderate.
 
 *Caulerpa — sulfide analysis*
 
-```{r}
-ca <- datos %>%
-  dplyr::filter(Species == "CAU")
-
+```{r sulfide-did-cau}
+ca <- datos %>% dplyr::filter(Species == "CAU")
 ca$Treatment <- factor(ca$Treatment, levels = c("Control", "HW"))
-ca$Time      <- factor(ca$Time,      levels = c("T0", "T2"))
+ca$Time <- factor(ca$Time, levels = c("T0", "T2"))
 
 fit_ca <- lm(Sulfur ~ Treatment + Time + Treatment:Time, data = ca)
 summary(fit_ca)
+knitr::kable(broom::tidy(fit_ca), digits = 3, caption = "Exploratory treatment × time model for sulfide in Caulerpa")
 ```
 
-In Caulerpa, sulfide concentrations increased significantly from T0 to T2 under control conditions (Time effect: p < 0.001). The DiD model further estimated an additional increase under heatwave exposure at T2 (interaction coefficient = 114.9), consistent with the descriptive pattern of greater accumulation under heatwave conditions. However, this differential effect was not statistically significant (p = 0.17), indicating that while sulfide accumulation clearly occurred over time, the evidence for an extra increase driven by heatwave exposure remains moderate.
-
+The treatment $\times$ time interaction term was used to summarize whether the T0--T2 contrast differed between control and heatwave conditions. These results were interpreted cautiously because the model summarizes differences among independent pots sampled at each time point.
 
 ### Redox potential
 
-```{r}
+```{r redox-data}
 # Data used only for the redox analysis block
 datos <- read_table("redox_data_12feb25.txt")
-datos$Species<-as.factor(datos$Species)
-datos$Treatment<-as.factor(datos$Treatment)
-datos$Time<-factor(datos$Time, levels = c("T0", "T2"))
+datos$Species <- as.factor(datos$Species)
+datos$Treatment <- as.factor(datos$Treatment)
+datos$Time <- factor(datos$Time, levels = c("T0", "T2"))
 ```
 
-```{r}
-#Group summary for plotting
+```{r redox-plot}
+# Group summary for plotting
 df_summary <- datos %>%
-  group_by(Time, Species, Treatment) %>%
-  summarise(
+  dplyr::group_by(Time, Species, Treatment) %>%
+  dplyr::summarise(
     mean_redox = mean(redox, na.rm = TRUE),
     sd_redox   = sd(redox, na.rm = TRUE),
-    n           = n(),
-    se_redox   = sd_redox / sqrt(n)
-  ) %>%
-  ungroup()
-
+    n          = n(),
+    se_redox   = sd_redox / sqrt(n),
+    .groups    = "drop"
+  )
 
 p_b <- ggplot() +
-  geom_jitter(data = datos,
-              aes(x = Time, y = redox, color = Species, shape = Treatment),
-              width = 0.1,  
-              alpha = 0.4,
-              size = 1.2) +
-  geom_point(data = df_summary,
-             aes(x = Time, 
-                 y = mean_redox, 
-                 color = Species, 
-                 shape = Treatment),
-             size = 3) +
-  geom_errorbar(data = df_summary,
-                aes(x = Time, 
-                    ymin = mean_redox - se_redox,
-                    ymax = mean_redox + se_redox,
-                    color = Species),
-                width = 0.1,
-                size = 1.2) +
+  geom_jitter(
+    data = datos,
+    aes(x = Time, y = redox, color = Species, shape = Treatment),
+    width = 0.1,
+    alpha = 0.4,
+    size = 1.2
+  ) +
+  geom_point(
+    data = df_summary,
+    aes(x = Time, y = mean_redox, color = Species, shape = Treatment),
+    size = 3
+  ) +
+  geom_errorbar(
+    data = df_summary,
+    aes(x = Time,
+        ymin = mean_redox - se_redox,
+        ymax = mean_redox + se_redox,
+        color = Species),
+    width = 0.1,
+    size = 1.2
+  ) +
   scale_color_manual(values = c("CAU" = "#008ae6", "CYM" = "#ff751a")) +
   labs(
     x = "Time",
-    y = expression(paste("redox (",m, "V)")) ,
+    y = expression(paste("redox (", m, "V)")),
     color = "Species",
     shape = "Treatment",
     linetype = "Treatment"
   ) +
-  theme_minimal() + 
-  theme(axis.title.x = element_text(face = "bold"),
-         axis.title.y = element_text(face = "bold"),
-        axis.text.x  = element_text(face = "bold"),
-        legend.title = element_text(face = "bold")
-        ) +
-   coord_cartesian(ylim = c(-430, -330)) +  
-   scale_y_continuous(
-     breaks = seq(-430, -330, by = 10)      
-   )
+  theme_minimal() +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    axis.text.x = element_text(face = "bold"),
+    legend.title = element_text(face = "bold")
+  ) +
+  coord_cartesian(ylim = c(-430, -330)) +
+  scale_y_continuous(breaks = seq(-430, -330, by = 10))
+
 p_b
 ```
 
-The figure provides a descriptive overview of sediment redox potential (mean ± SE) at baseline (T0) and after exposure (T2) for sediments colonized by Caulerpa (blue) and Cymodocea (orange) under control (solid lines) and heatwave (dashed lines) conditions. Visually, redox potential tended to decrease from T0 to T2 in both species. In Caulerpa, the decline appeared more evident under control conditions than under heatwave conditions. In Cymodocea, redox potential also appeared to decrease over time, with a stronger visual decline under heatwave treatment.
+The figure provides a descriptive overview of sediment redox potential (mean ± SE) at baseline (T0) and after exposure (T2) for sediments colonized by *Caulerpa* and *Cymodocea* under control and heatwave conditions. Because different pots were sampled at T0 and T2, comparisons between sampling times represent contrasts among independent pots rather than repeated measurements of the same pots.
 
-To formally assess these visual patterns, we applied a nonparametric framework. We evaluated within-group changes from T0 to T2 for each Species $\times$ Treatment using Wilcoxon tests and then compared treatments at T2 within each species. P-values were adjusted for multiple testing using the Benjamini–Hochberg procedure.
+To formally assess these visual patterns, we evaluated T0--T2 contrasts for each Species $\times$ Treatment using Wilcoxon rank-sum tests and compared treatments at T2 within each species. P-values were adjusted for multiple testing using the Benjamini--Hochberg procedure.
 
-```{r}
+```{r redox-time-tests}
 eh_within <- datos %>%
   dplyr::group_by(Species, Treatment) %>%
   dplyr::summarise(
@@ -312,20 +336,22 @@ eh_within <- datos %>%
       y <- d$redox[d$Time == "T2"]
       if (length(x) > 0 && length(y) > 0) {
         suppressWarnings(stats::wilcox.test(x, y, exact = FALSE)$p.value)
-      } else NA_real_
+      } else {
+        NA_real_
+      }
     },
     .groups = "drop"
   ) %>%
   dplyr::mutate(p_adj = p.adjust(p, method = "BH"))
 
-knitr::kable(eh_within, digits = 3,
-             caption = "Wilcoxon (T0 vs T2) by Species × Treatment (BH-adjusted p)")
-
+knitr::kable(
+  eh_within,
+  digits = 3,
+  caption = "Wilcoxon rank-sum tests comparing T0 vs T2 by Species × Treatment (BH-adjusted p)"
+)
 ```
 
-These summaries indicate that redox potential generally decreased over time, with the largest apparent declines occurring in Caulerpa under control conditions and in Cymodocea under heatwave conditions. The formal Wilcoxon results below determine which of these visual shifts are statistically supported.
-
-```{r}
+```{r redox-treatment-t2}
 eh_t2_bt <- datos %>%
   dplyr::filter(Time == "T2") %>%
   dplyr::group_by(Species) %>%
@@ -334,235 +360,627 @@ eh_t2_bt <- datos %>%
       d <- dplyr::cur_data()
       if (dplyr::n_distinct(d$Treatment) >= 2) {
         suppressWarnings(stats::wilcox.test(redox ~ Treatment, data = d, exact = FALSE)$p.value)
-      } else NA_real_
+      } else {
+        NA_real_
+      }
     },
     .groups = "drop"
   ) %>%
   dplyr::mutate(p_adj = p.adjust(p, method = "BH"))
 
-knitr::kable(eh_t2_bt, digits = 3,
-             caption = "Wilcoxon (Treatment) at T2 by Species (BH-adjusted p)")
+knitr::kable(
+  eh_t2_bt,
+  digits = 3,
+  caption = "Wilcoxon rank-sum tests comparing treatments at T2 by Species (BH-adjusted p)"
+)
 ```
 
-Overall, redox potential tended to decrease from T0 to T2, but the magnitude and significance of these shifts varied across species and treatments. In Caulerpa, a significant decline was detected under control conditions (BH-adjusted p = 0.020), whereas no change was observed under heatwave conditions. In Cymodocea, redox potential also decreased over time, with a trend towards stronger reductions under heatwave exposure (raw p = 0.045), though this did not remain significant after correction (BH-adjusted p = 0.091). Comparisons between treatments at T2 revealed no differences for Caulerpa and only a marginal effect for Cymodocea (BH-adjusted p = 0.091). 
+Overall, redox potential tended to be more negative in T2 samples than in T0 samples, but the magnitude and statistical support of these contrasts varied across species and treatments. Significance was interpreted using BH-adjusted p-values.
 
-#### Difference-in-Differences (DiD) models
+#### Difference-in-differences-type models
 
-We then fitted difference-in-differences (DiD) models for each species. This framework evaluates whether changes in redox potential from T0 to T2 differed between control and heatwave conditions, while simultaneously accounting for the main effects of treatment and temporal progression. The key parameter of interest is the interaction term (Treatment × Time), which quantifies the additional effect attributable to heatwave exposure at the final sampling point (T2), thereby offering a direct estimate of the treatment-specific impact.
+We then fitted exploratory difference-in-differences-type models for each species to summarize whether T0--T2 contrasts in redox potential differed between control and heatwave conditions. Because different pots were sampled at each time point, these models were interpreted as treatment $\times$ time interaction models rather than as formal longitudinal causal estimates.
 
 *Cymodocea — redox analysis*
 
-```{r}
-# Re-create species-specific datasets within the redox block
+```{r redox-did-cym}
 cy <- datos %>% dplyr::filter(Species == "CYM")
 cy$Treatment <- factor(cy$Treatment, levels = c("Control", "HW"))
 cy$Time <- factor(cy$Time, levels = c("T0", "T2"))
+
 fit_cy <- lm(redox ~ Treatment + Time + Treatment:Time, data = cy)
 summary(fit_cy)
+knitr::kable(broom::tidy(fit_cy), digits = 3, caption = "Exploratory treatment × time model for redox potential in Cymodocea")
 ```
-
-In Cymodocea, redox potential declined significantly from T0 to T2 under control conditions (Time effect: –20.7, p = 0.041). The DiD model further estimated an additional reduction under heatwave exposure at T2 (interaction coefficient = –19.1), consistent with the descriptive observation of stronger declines under heatwave conditions. However, this interaction was not statistically significant (p = 0.18), indicating that while the data suggest a heatwave-driven intensification of the temporal decline in redox potential, the statistical support for this effect remains limited.
 
 *Caulerpa — redox analysis*
 
-```{r}
-# Re-create species-specific datasets within the redox block
+```{r redox-did-cau}
 ca <- datos %>% dplyr::filter(Species == "CAU")
 ca$Treatment <- factor(ca$Treatment, levels = c("Control", "HW"))
 ca$Time <- factor(ca$Time, levels = c("T0", "T2"))
+
 fit_ca <- lm(redox ~ Treatment + Time + Treatment:Time, data = ca)
 summary(fit_ca)
+knitr::kable(broom::tidy(fit_ca), digits = 3, caption = "Exploratory treatment × time model for redox potential in Caulerpa")
 ```
 
-In Caulerpa, redox potential showed no significant temporal change from T0 to T2 under control conditions (Time effect: –6.5, p = 0.36). The model estimated a slightly lower baseline under heatwave compared to control at T0 (Treatment effect: –13.8, p = 0.059), suggesting a marginal initial difference between treatments. However, the interaction term (Treatment × Time) was small and not significant (p = 0.86), indicating that heatwave exposure did not alter the temporal trajectory of redox potential. Overall, these results suggest that, unlike Cymodocea, the decline in redox observed in Caulerpa sediments was not exacerbated by heatwave conditions.
+The treatment $\times$ time interaction term was used to summarize whether the T0--T2 contrast differed between control and heatwave conditions. These results were interpreted cautiously because the model summarizes differences among independent pots sampled at each time point.
 
 ### Sediment cell counts
 
-We analyzed cell counts in sediments colonized by either Caulerpa or Cymodocea under control and heatwave conditions. In this section, we first describe the temporal patterns (T0–T1–T2) within each Species × Treatment group and then report the corresponding inferential comparisons, followed by between-species contrasts.
+We analyzed cell counts in sediments colonized by either *Caulerpa* or *Cymodocea* under control and heatwave conditions. We first describe the patterns across sampling times (T0--T1--T2) within each Species $\times$ Treatment group and then report the corresponding inferential comparisons, followed by between-species contrasts. Because different pots were sampled at each time point, temporal comparisons are interpreted as contrasts among independent pots sampled at each time point.
 
-```{r}
-#Data
-datos <- read_table("cell_shanon_data_12_05_25.txt") %>% 
-  mutate(
-    Species   = factor(Species),
-    Time      = factor(Time, levels = c("T0","T1","T2")),
+```{r cells-data-plot}
+# Data
+datos <- read_table("cell_shanon_data_12_05_25.txt") %>%
+  dplyr::mutate(
+    Species = factor(Species),
+    Time = factor(Time, levels = c("T0", "T1", "T2")),
     Treatment = factor(Treatment),
-    cells     = as.numeric(cells)
+    cells = as.numeric(cells)
   )
 
-#Group summary for plotting
+# Group summary for plotting
 summary_data <- datos %>%
-  group_by(Species, Treatment, Time) %>%
-  summarise(
+  dplyr::group_by(Species, Treatment, Time) %>%
+  dplyr::summarise(
     mean_cells = mean(cells, na.rm = TRUE),
-    sd         = sd(cells,   na.rm = TRUE),
-    n          = n(),
-    se         = sd / sqrt(n),
-    .groups    = "drop"
+    sd = sd(cells, na.rm = TRUE),
+    n = n(),
+    se = sd / sqrt(n),
+    .groups = "drop"
   )
 
-t1_hw <- summary_data %>% 
-  filter(Treatment == "HW", Time == "T1") %>%
-  dplyr::select(Species, y    = mean_cells)
-t2_hw <- summary_data %>% 
-  filter(Treatment == "HW", Time == "T2") %>%
+t1_hw <- summary_data %>%
+  dplyr::filter(Treatment == "HW", Time == "T1") %>%
+  dplyr::select(Species, y = mean_cells)
+
+t2_hw <- summary_data %>%
+  dplyr::filter(Treatment == "HW", Time == "T2") %>%
   dplyr::select(Species, yend = mean_cells)
-segments_hw <- left_join(t1_hw, t2_hw, by = "Species")
 
-t12     <- summary_data %>% filter(Time %in% c("T1","T2"))
+segments_hw <- dplyr::left_join(t1_hw, t2_hw, by = "Species")
+
+t12 <- summary_data %>% dplyr::filter(Time %in% c("T1", "T2"))
 rango12 <- range(t12$mean_cells - t12$se, t12$mean_cells + t12$se)
-ymin12  <- rango12[1] - 0.025 * diff(rango12)
-ymax12  <- rango12[2] + 0.025 * diff(rango12)
+ymin12 <- rango12[1] - 0.025 * diff(rango12)
+ymax12 <- rango12[2] + 0.025 * diff(rango12)
 
-
-p_c<- ggplot() +
+p_c <- ggplot() +
   geom_jitter(
-    data  = datos,
+    data = datos,
     aes(x = Time, y = cells, color = Species, shape = Treatment),
-    width = 0.1, alpha = 0.4, size = 1.2
+    width = 0.1,
+    alpha = 0.4,
+    size = 1.2
   ) +
   geom_point(
-    data  = summary_data,
+    data = summary_data,
     aes(x = Time, y = mean_cells, color = Species, shape = Treatment),
     size = 3
   ) +
   geom_errorbar(
     data = summary_data,
     aes(x = Time,
-        ymin  = mean_cells - se,
-        ymax  = mean_cells + se,
+        ymin = mean_cells - se,
+        ymax = mean_cells + se,
         color = Species),
-    width = 0.2, size = 1.25
+    width = 0.2,
+    size = 1.25
   ) +
-  scale_color_manual(name   = "Species",
-                     values = c("CAU" = "#008ae6", "CYM" = "#ff751a")) +
-  scale_shape_manual(name   = "Treatment",
-                     values = c("Control" = 16,  # circles filled
-                                "HW"      = 17)) +# triangles filled
-  scale_linetype_manual(name   = "Treatment",
-                        values = c("Control" = "solid",
-                                   "HW"      = "dashed")) +
+  scale_color_manual(
+    name = "Species",
+    values = c("CAU" = "#008ae6", "CYM" = "#ff751a")
+  ) +
+  scale_shape_manual(
+    name = "Treatment",
+    values = c("Control" = 16, "HW" = 17)
+  ) +
+  scale_linetype_manual(
+    name = "Treatment",
+    values = c("Control" = "solid", "HW" = "dashed")
+  ) +
   guides(
-    shape    = guide_legend(override.aes = list(size = 3)),
+    shape = guide_legend(override.aes = list(size = 3)),
     linetype = guide_legend(override.aes = list(size = 1.5))
   ) +
   labs(
-    x        = "Time",
-    y        = "Cells",
-    color    = "Species",
-    shape    = "Treatment",
+    x = "Time",
+    y = "Cells",
+    color = "Species",
+    shape = "Treatment",
     linetype = "Treatment"
   ) +
   theme_minimal(base_size = 12) +
   theme(
     axis.title.x = element_text(face = "bold"),
     axis.title.y = element_text(face = "bold"),
-    axis.text.x  = element_text(face = "bold"),
+    axis.text.x = element_text(face = "bold"),
     legend.title = element_text(face = "bold")
   ) +
   coord_cartesian(ylim = c(ymin12, ymax12)) +
   scale_y_continuous(
     breaks = pretty(c(ymin12, ymax12), n = 5),
-    labels = expression(0,5%*%10^7,1%*%10^8,1.5%*%10^8,2%*%10^8,2.5%*%10^8),
-    expand = expansion(mult = c(0,0))
+    labels = expression(0, 5 %*% 10^7, 1 %*% 10^8, 1.5 %*% 10^8, 2 %*% 10^8, 2.5 %*% 10^8),
+    expand = expansion(mult = c(0, 0))
   )
 
 p_c
 ```
 
-The figure shows cell counts in sediments colonized by Caulerpa (blue) and Cymodocea (orange) under control (solid lines) and heatwave (dashed lines) conditions across three time points (T0, T1, T2). In Caulerpa, cell numbers remained relatively stable from T0 to T1, followed by a marked increase under heatwave conditions at T2, while control samples decreased slightly. In contrast, Cymodocea exhibited consistently lower cell counts overall, with values remaining stable between T0 and T1 but declining toward T2 under both treatments, particularly under heatwave exposure.
+The figure shows cell counts in sediments colonized by *Caulerpa* and *Cymodocea* under control and heatwave conditions across three sampling times (T0, T1, T2). The figure is interpreted descriptively, and formal tests are reported below.
 
 We first quantified the overall range of cell counts observed in each species to provide context for the magnitude of the differences.
 
-
-```{r}
+```{r cell-ranges}
 ranges <- datos %>%
-  group_by(Species) %>%
-  summarise(
+  dplyr::group_by(Species) %>%
+  dplyr::summarise(
     min_cells = min(cells, na.rm = TRUE),
     max_cells = max(cells, na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  mutate(min_x1e9 = round(min_cells / 1e9, 1),
-         max_x1e9 = round(max_cells / 1e9, 1))
+  dplyr::mutate(
+    min_x1e9 = round(min_cells / 1e9, 1),
+    max_x1e9 = round(max_cells / 1e9, 1)
+  )
 
 knitr::kable(ranges, digits = 2, caption = "Species-wise ranges (×10^9 cells/g)")
 ```
 
-These ranges highlight the broader scale of variation in Caulerpa compared with Cymodocea, providing a baseline for interpreting subsequent tests.
+To evaluate species-level differences, we first applied a Wilcoxon rank-sum test pooling across all sampling times and treatments. This overall comparison was used as a descriptive global contrast, because it pools observations across experimental conditions. We then compared species separately at each sampling time and adjusted p-values across these time-specific comparisons using the Benjamini--Hochberg procedure.
 
-
-To evaluate species-level differences, we first applied a Wilcoxon rank–sum test pooling across all time points and treatments.
-
-```{r}
+```{r cell-between-species}
 # Overall (pooling all times/treatments)
 bt_overall <- suppressWarnings(stats::wilcox.test(cells ~ Species, data = datos, exact = FALSE))
 
-# By time (T0, T1, T2) 
+# By time (T0, T1, T2), with BH adjustment across time-specific comparisons
 bt_by_time <- datos %>%
-  group_by(Time) %>%
-  summarise(
+  dplyr::group_by(Time) %>%
+  dplyr::summarise(
     p = {
-      d <- cur_data()
+      d <- dplyr::cur_data()
       suppressWarnings(stats::wilcox.test(d$cells ~ d$Species, exact = FALSE)$p.value)
     },
     .groups = "drop"
-  )
+  ) %>%
+  dplyr::mutate(p_adj = p.adjust(p, method = "BH"))
 
-knitr::kable(bt_by_time, digits = 3, caption = "Between-species Wilcoxon by Time")
+knitr::kable(bt_by_time, digits = 3, caption = "Between-species Wilcoxon rank-sum tests by sampling time (BH-adjusted p)")
+
 bt_overall$p.value
-
 ```
 
-This overall comparison indicated that cell counts differed between species, with Caulerpa generally showing higher values than Cymodocea across the experiment.
+This overall comparison indicated that cell counts differed between species, with *Caulerpa* generally showing higher values than *Cymodocea* across the experiment. Time-specific comparisons were interpreted using BH-adjusted p-values.
 
-To assess whether cell counts changed over time within each Species × Treatment combination, we first applied a nonparametric global test across the three sampling points (T0, T1, T2).
+To assess whether cell counts differed among sampling times within each Species $\times$ Treatment combination, we first applied a nonparametric global test across the three sampling points (T0, T1, T2). Pairwise Wilcoxon rank-sum tests were then performed within each Species $\times$ Treatment group, with Benjamini--Hochberg adjustment across the three pairwise contrasts.
 
-```{r}
-# Kruskal–Wallis per group
+```{r cell-temporal-tests}
+# Kruskal-Wallis per group
 kw_time <- datos %>%
-  group_by(Species, Treatment) %>%
-  summarise(
+  dplyr::group_by(Species, Treatment) %>%
+  dplyr::summarise(
     kw_p = {
-      d <- cur_data()
-      if (n_distinct(d$Time) >= 2) {
+      d <- dplyr::cur_data()
+      if (dplyr::n_distinct(d$Time) >= 2) {
         suppressWarnings(kruskal.test(cells ~ Time, data = d)$p.value)
-      } else NA_real_
+      } else {
+        NA_real_
+      }
     },
     .groups = "drop"
   )
 
 # Pairwise Wilcoxon per group (BH across the 3 pairwise contrasts within each group)
 pw_time <- datos %>%
-  group_by(Species, Treatment) %>%
-  group_modify(~{
+  dplyr::group_by(Species, Treatment) %>%
+  dplyr::group_modify(~{
     d <- .x
-    # Need at least 2 time levels
-    if (n_distinct(d$Time) < 2) return(tibble())
+    if (dplyr::n_distinct(d$Time) < 2) return(tibble())
+
     pw <- pairwise.wilcox.test(d$cells, d$Time, p.adjust.method = "BH", exact = FALSE)
-    # Convert p-value matrix to long
+
     M <- as.data.frame(as.table(pw$p.value))
-    names(M) <- c("Time1","Time2","p_adj")
-    M <- M %>% filter(!is.na(p_adj))
-    # Add direction using medians
-    meds <- d %>% group_by(Time) %>% summarise(med = median(cells, na.rm = TRUE), .groups="drop")
+    names(M) <- c("Time1", "Time2", "p_adj")
+    M <- M %>% dplyr::filter(!is.na(p_adj))
+
+    meds <- d %>% dplyr::group_by(Time) %>% dplyr::summarise(med = median(cells, na.rm = TRUE), .groups = "drop")
+
     M <- M %>%
-      left_join(meds, by = c("Time1" = "Time")) %>% rename(med1 = med) %>%
-      left_join(meds, by = c("Time2" = "Time")) %>% rename(med2 = med) %>%
-      mutate(direction = case_when(
+      dplyr::left_join(meds, by = c("Time1" = "Time")) %>% dplyr::rename(med1 = med) %>%
+      dplyr::left_join(meds, by = c("Time2" = "Time")) %>% dplyr::rename(med2 = med) %>%
+      dplyr::mutate(direction = dplyr::case_when(
         med2 > med1 ~ "increase",
         med2 < med1 ~ "decrease",
         TRUE ~ "no_change"
       ))
     M
   }) %>%
-  ungroup()
+  dplyr::ungroup()
 
-knitr::kable(kw_time, digits = 3, caption = "Kruskal–Wallis across T0–T1–T2 by Species × Treatment")
-knitr::kable(pw_time, digits = 3, caption = "Pairwise Wilcoxon (BH-adjusted) and median directions")
+knitr::kable(kw_time, digits = 3, caption = "Kruskal-Wallis tests across T0-T1-T2 by Species × Treatment")
+knitr::kable(pw_time, digits = 3, caption = "Pairwise Wilcoxon rank-sum tests across sampling times (BH-adjusted p) and median directions")
 ```
 
-Although the nonparametric tests did not detect statistically significant within-group changes, the descriptive patterns in the figures suggest trends that may be biologically relevant. In particular, Cymodocea under control conditions showed a consistent rise in median cell counts from T0 to T2, and Caulerpa exhibited fluctuations that point to a potential increase by the final time point. The absence of statistical significance likely reflects the limited sample size and variability within groups, rather than a complete lack of temporal dynamics. Thus, while the formal tests provide little evidence for strong within-group effects, the graphical trends indicate subtle trajectories that may become clearer with larger sample sizes or longer experimental follow-up.
+The nonparametric tests did not detect statistically significant within-group differences among sampling times. The graphical patterns may indicate biologically relevant variation, but these patterns should be interpreted cautiously because of the limited sample size, between-pot variability, and the fact that different pots were sampled at each time point.
+
+
+## Zero-inflation and zero-replacement sensitivity analysis
+
+This section quantifies the fraction of zero entries in the OTU relative-abundance matrix before and after filtering rare and singleton OTUs. It also assesses the sensitivity of the compositional structure to the zero-replacement procedure by comparing the main GBM imputation with an alternative CZM imputation using Aitchison distances and clr-based OTU rankings.
+
+```{r zero-inflation-and-zero-replacement-sensitivity}
+
+options(scipen = 999)
+
+required_packages <- c("readxl", "zCompositions", "vegan")
+
+
+library(readxl)
+library(zCompositions)
+library(vegan)
+
+# -------------------------
+# Settings
+# -------------------------
+
+data_file <- "TablaOTUs.xlsx"
+
+# Remove OTUs with <= 2 total reads
+low_count_threshold <- 2
+
+# Number of top OTUs used for the GBM-vs-CZM sensitivity check
+top_k <- 100
+
+# -------------------------
+# Functions
+# -------------------------
+
+remove_cols_safe <- function(mat, cols_to_remove) {
+  if (length(cols_to_remove) == 0) return(mat)
+  mat[, -cols_to_remove, drop = FALSE]
+}
+
+closure_rows <- function(mat) {
+  mat <- as.matrix(mat)
+  storage.mode(mat) <- "numeric"
+  
+  rs <- rowSums(mat)
+  
+  if (any(rs == 0)) {
+    stop("At least one sample has total count equal to zero.")
+  }
+  
+  sweep(mat, 1, rs, FUN = "/")
+}
+
+zero_summary_row <- function(mat, step) {
+  rel_mat <- closure_rows(mat)
+  
+  data.frame(
+    step = step,
+    samples = nrow(rel_mat),
+    taxa = ncol(rel_mat),
+    cells = length(rel_mat),
+    zeros = sum(rel_mat == 0, na.rm = TRUE),
+    zero_fraction = mean(rel_mat == 0, na.rm = TRUE),
+    zero_percent = 100 * mean(rel_mat == 0, na.rm = TRUE),
+    stringsAsFactors = FALSE
+  )
+}
+
+impute_safe <- function(mat, method) {
+  out <- tryCatch(
+    zCompositions::cmultRepl(
+      mat,
+      method = method,
+      output = "p-counts",
+      suppress.print = TRUE,
+      z.warning = 0.99
+    ),
+    error = function(e) {
+      warning(
+        "cmultRepl method '", method, "' failed: ", conditionMessage(e),
+        ". Falling back to a small pseudocount replacement."
+      )
+      
+      mat2 <- as.matrix(mat)
+      storage.mode(mat2) <- "numeric"
+      
+      min_positive <- min(mat2[mat2 > 0], na.rm = TRUE)
+      pseudo <- min_positive / 2
+      mat2[mat2 == 0] <- pseudo
+      
+      sweep(mat2, 1, rowSums(mat2), FUN = "/") * rowSums(mat)
+    }
+  )
+  
+  out <- as.matrix(out)
+  rownames(out) <- rownames(mat)
+  colnames(out) <- colnames(mat)
+  out
+}
+
+clr_transform <- function(mat) {
+  rel_mat <- closure_rows(mat)
+  log_mat <- log(rel_mat)
+  sweep(log_mat, 1, rowMeans(log_mat), FUN = "-")
+}
+
+aitchison_dist <- function(mat) {
+  dist(clr_transform(mat), method = "euclidean")
+}
+
+simple_clr_signature <- function(imputed_counts, groups, top_k = 100) {
+  clr_mat <- clr_transform(imputed_counts)
+  
+  groups <- factor(groups)
+  
+  if (nlevels(groups) != 2) {
+    stop("groups must have exactly two levels.")
+  }
+  
+  lev <- levels(groups)
+  
+  effect <- colMeans(clr_mat[groups == lev[1], , drop = FALSE]) -
+    colMeans(clr_mat[groups == lev[2], , drop = FALSE])
+  
+  ord <- order(abs(effect), decreasing = TRUE)
+  names(effect)[ord][seq_len(min(top_k, length(ord)))]
+}
+
+jaccard_index <- function(a, b) {
+  a <- unique(a)
+  b <- unique(b)
+  union_set <- union(a, b)
+  
+  if (length(union_set) == 0) return(NA_real_)
+  
+  length(intersect(a, b)) / length(union_set)
+}
+
+# -------------------------
+# Read data and select OTU columns by position
+# -------------------------
+
+tax_otu <- data.frame(read_excel(data_file), check.names = FALSE)
+
+if (!("ID" %in% names(tax_otu))) {
+  stop("Column 'ID' was not found in TablaOTUs.xlsx.")
+}
+
+Samples <- tax_otu$ID
+
+# OTU columns are selected by position:
+# columns 1 and 2 are metadata; the last two columns are non-OTU auxiliary columns.
+otu_cols <- 3:(ncol(tax_otu) - 2)
+
+excluded_cols <- setdiff(names(tax_otu), names(tax_otu)[otu_cols])
+
+DF.0 <- tax_otu[, otu_cols, drop = FALSE]
+
+n.OTUs.original <- ncol(DF.0)
+
+taxa <- colnames(DF.0)
+taxa.original <- taxa
+
+OTUs <- paste("OTU", 1:n.OTUs.original, sep = "")
+
+colnames(DF.0) <- OTUs
+
+DF.0.total <- DF.0
+colnames(DF.0.total) <- OTUs
+rownames(DF.0.total) <- Samples
+
+# Convert to numeric
+DF.0 <- as.data.frame(lapply(DF.0, function(x) as.numeric(as.character(x))))
+DF.0[is.na(DF.0)] <- 0
+DF.0 <- as.matrix(DF.0)
+rownames(DF.0) <- Samples
+
+DF.0.total <- as.data.frame(lapply(DF.0.total, function(x) as.numeric(as.character(x))))
+DF.0.total[is.na(DF.0.total)] <- 0
+DF.0.total <- as.matrix(DF.0.total)
+rownames(DF.0.total) <- Samples
+
+cat("\nCOLUMN DIAGNOSTIC\n")
+cat("Total columns in Excel:", ncol(tax_otu), "\n")
+cat("OTU columns retained:", ncol(DF.0), "\n")
+cat("Non-OTU columns excluded:\n")
+print(excluded_cols)
+
+# -------------------------
+# Zero fraction before filtering
+# -------------------------
+
+n_initial_taxa <- ncol(DF.0)
+
+zero_before <- zero_summary_row(
+  DF.0,
+  "Before filtering"
+)
+
+# -------------------------
+# Remove OTUs with <= 2 reads
+# -------------------------
+
+Miseria <- as.vector(which(colSums(DF.0) <= low_count_threshold))
+
+DF.0 <- remove_cols_safe(DF.0, Miseria)
+taxa <- taxa[-Miseria]
+OTUs <- OTUs[-Miseria]
+
+zero_after_low_count <- zero_summary_row(
+  DF.0,
+  "After removing OTUs with <= 2 total reads"
+)
+
+# -------------------------
+# Detect and remove OTUs present in only one sample
+# -------------------------
+
+hit <- function(x) {
+  min(c(x, 1))
+}
+
+DF.0.hits <- as.matrix(DF.0)
+DF.0.hits[] <- vapply(DF.0.hits, hit, numeric(1))
+
+singleton_cols <- which(colSums(DF.0.hits) == 1)
+
+DF.0 <- remove_cols_safe(DF.0, singleton_cols)
+taxa <- taxa[-singleton_cols]
+OTUs <- OTUs[-singleton_cols]
+
+rownames(DF.0) <- Samples
+
+counts_filtered <- DF.0
+
+zero_after_filtering <- zero_summary_row(
+  counts_filtered,
+  "After filtering, before imputation"
+)
+
+# -------------------------
+# Filtering summary
+# -------------------------
+
+n_final_taxa <- ncol(counts_filtered)
+
+removed_taxa <- n_initial_taxa - n_final_taxa
+removed_percent <- 100 * removed_taxa / n_initial_taxa
+
+low_count_percent <- 100 * length(Miseria) / n_initial_taxa
+singleton_percent <- 100 * length(singleton_cols) / n_initial_taxa
+
+zero_summary <- rbind(
+  zero_before,
+  zero_after_low_count,
+  zero_after_filtering
+)
+
+zero_summary$zero_fraction <- round(zero_summary$zero_fraction, 4)
+zero_summary$zero_percent <- round(zero_summary$zero_percent, 2)
+
+write.csv(
+  zero_summary,
+  "zero_fraction_summary.csv",
+  row.names = FALSE
+)
+
+cat("\nZERO FRACTION SUMMARY\n")
+print(zero_summary)
+
+cat("\nFILTERING SUMMARY\n")
+cat("Initial taxa:", n_initial_taxa, "\n")
+cat(
+  "Taxa with <=", low_count_threshold, "total reads:",
+  length(Miseria),
+  sprintf("(%.1f%% of initial taxa)\n", low_count_percent)
+)
+cat(
+  "Singleton taxa removed after low-count filtering:",
+  length(singleton_cols),
+  sprintf("(%.1f%% of initial taxa)\n", singleton_percent)
+)
+cat("Final taxa:", n_final_taxa, "\n")
+cat("Total taxa removed:", removed_taxa, sprintf("(%.1f%%)\n", removed_percent))
+
+# -------------------------
+# Zero replacement sensitivity: GBM vs CZM
+# -------------------------
+
+GBM <- impute_safe(counts_filtered, method = "GBM")
+CZM <- impute_safe(counts_filtered, method = "CZM")
+
+D_GBM <- aitchison_dist(GBM)
+D_CZM <- aitchison_dist(CZM)
+
+mantel_res <- vegan::mantel(
+  D_GBM,
+  D_CZM,
+  method = "spearman",
+  permutations = 999
+)
+
+sensitivity_summary <- data.frame(
+  comparison = "GBM_vs_CZM",
+  distance = "Aitchison",
+  pearson_correlation = cor(as.vector(D_GBM), as.vector(D_CZM), method = "pearson"),
+  spearman_correlation = cor(as.vector(D_GBM), as.vector(D_CZM), method = "spearman"),
+  mantel_r = unname(mantel_res$statistic),
+  mantel_p = mantel_res$signif,
+  mean_absolute_difference = mean(abs(as.vector(D_GBM) - as.vector(D_CZM))),
+  median_absolute_difference = median(abs(as.vector(D_GBM) - as.vector(D_CZM))),
+  max_absolute_difference = max(abs(as.vector(D_GBM) - as.vector(D_CZM))),
+  stringsAsFactors = FALSE
+)
+
+# -------------------------
+# Optional top-OTU overlap based on clr differences between CAU and CYM
+# -------------------------
+
+sample_ids <- rownames(counts_filtered)
+
+if (all(grepl("^(CAU|CYM)", sample_ids))) {
+  groups <- sub("^(CAU|CYM).*", "\\1", sample_ids)
+  
+  sig_GBM <- simple_clr_signature(GBM, groups, top_k = top_k)
+  sig_CZM <- simple_clr_signature(CZM, groups, top_k = top_k)
+  
+  sensitivity_summary$top_k <- top_k
+  sensitivity_summary$top_otu_overlap <- length(intersect(sig_GBM, sig_CZM))
+  sensitivity_summary$top_otu_jaccard <- jaccard_index(sig_GBM, sig_CZM)
+} else {
+  sensitivity_summary$top_k <- NA
+  sensitivity_summary$top_otu_overlap <- NA
+  sensitivity_summary$top_otu_jaccard <- NA
+  
+  warning(
+    "Sample IDs do not all start with CAU or CYM; clr-based top-OTU overlap was skipped."
+  )
+}
+
+sensitivity_summary$pearson_correlation <- round(
+  sensitivity_summary$pearson_correlation, 3
+)
+sensitivity_summary$spearman_correlation <- round(
+  sensitivity_summary$spearman_correlation, 3
+)
+sensitivity_summary$mantel_r <- round(
+  sensitivity_summary$mantel_r, 3
+)
+sensitivity_summary$mantel_p <- signif(
+  sensitivity_summary$mantel_p, 3
+)
+sensitivity_summary$mean_absolute_difference <- round(
+  sensitivity_summary$mean_absolute_difference, 3
+)
+sensitivity_summary$median_absolute_difference <- round(
+  sensitivity_summary$median_absolute_difference, 3
+)
+sensitivity_summary$max_absolute_difference <- round(
+  sensitivity_summary$max_absolute_difference, 3
+)
+
+if (!is.na(sensitivity_summary$top_otu_jaccard)) {
+  sensitivity_summary$top_otu_jaccard <- round(
+    sensitivity_summary$top_otu_jaccard, 3
+  )
+}
+
+write.csv(
+  sensitivity_summary,
+  "zero_replacement_sensitivity.csv",
+  row.names = FALSE
+)
+
+cat("\nZERO-REPLACEMENT SENSITIVITY SUMMARY\n")
+print(sensitivity_summary)
+
+```
+
 
 ## Biodiversity
 
